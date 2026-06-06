@@ -1,0 +1,4 @@
+"NSCameraUsageDescription" = "StyleAI uses your camera to capture photos for style generation.";
+"NSPhotoLibraryUsageDescription" = "StyleAI accesses your photos so you can choose an image for style generation.";
+"NSPhotoLibraryAddUsageDescription" = "StyleAI saves your generated style results to your photo library.";
+"CFBundleDisplayName" = "StyleAI";

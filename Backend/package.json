@@ -1,0 +1,13 @@
+{
+  "name": "styleai-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "STYLEAI_ENABLE_MOCK_GENERATION=true node src/server.mjs"
+  }
+}

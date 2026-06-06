@@ -1,0 +1,5 @@
+data/*.json
+data/*.tmp
+uploads/*
+!uploads/.gitkeep
+.env
