@@ -14,7 +14,7 @@ import {
   verifyToken
 } from "./auth.mjs";
 import { config } from "./config.mjs";
-import { generateStyleVariants } from "./fal.mjs";
+import { FalBillingError, generateStyleVariants } from "./fal.mjs";
 import { corsHeaders, HttpError, readJSON, readRawBody, sendError, sendJSON } from "./http-utils.mjs";
 import { JsonStore } from "./store.mjs";
 import { broadcastJobUpdate, handleUpgrade, sendJobUpdate } from "./websocket.mjs";
@@ -36,7 +36,11 @@ const server = http.createServer(async (request, response) => {
   try {
     await route(request, response);
   } catch (error) {
-    console.error(error);
+    logBackend("request_error", {
+      method: request.method,
+      url: request.url,
+      error: error.message || String(error)
+    });
     sendError(response, error);
   }
 });
@@ -54,6 +58,13 @@ server.listen(config.port, () => {
   console.log(`StyleAI backend listening on ${config.publicBaseURL}`);
   console.log(`REST base: ${config.publicBaseURL}/v1`);
   console.log(`WebSocket base: ${config.publicBaseURL.replace(/^http/, "ws")}/ws`);
+  logBackend("server_started", {
+    port: config.port,
+    publicBaseURL: config.publicBaseURL,
+    falModel: config.falModel,
+    mockGeneration: config.enableMockGeneration,
+    fallbackToMockOnFalBilling: config.fallbackToMockOnFalBilling
+  });
 });
 
 async function route(request, response) {
@@ -226,6 +237,7 @@ async function presignUpload(request, response) {
     });
   });
 
+  logBackend("upload_presigned", { userId: auth.sub, uploadId, s3Key });
   sendJSON(response, 200, { uploadURL, s3Key });
 }
 
@@ -258,6 +270,13 @@ async function receiveUpload(request, response, uploadId, token) {
     return candidate;
   });
 
+  logBackend("upload_received", {
+    userId: upload.userId,
+    uploadId: upload.id,
+    s3Key: upload.s3Key,
+    bytes: upload.size,
+    contentType: upload.contentType
+  });
   sendJSON(response, 200, { success: true, s3Key: upload.s3Key });
 }
 
@@ -266,11 +285,17 @@ async function createJob(request, response) {
   const body = await readJSON(request);
   const s3Key = String(body.s3Key || "");
   const styleGoal = String(body.styleGoal || "");
+  const subjectGender = normalizeSubjectGender(body.subjectGender);
+  const styleProfile = normalizeStyleProfile({
+    ...(isPlainObject(body.styleProfile) ? body.styleProfile : {}),
+    subjectGender
+  });
 
   if (!allowedStyleGoals.has(styleGoal)) {
     throw new HttpError(400, "Invalid style goal.");
   }
 
+  const styleGoals = normalizeStyleGoals(styleGoal, body.styleGoals);
   const seed = Number.isFinite(Number(body.seed)) ? Number(body.seed) : undefined;
   const job = await store.mutate(async (data) => {
     const upload = data.uploads.find(
@@ -287,11 +312,17 @@ async function createJob(request, response) {
       userId: auth.sub,
       s3Key,
       styleGoal,
+      styleGoals,
+      subjectGender,
+      styleProfile,
       status: "pending",
       progress: 0,
       resultURLs: [],
+      looks: [],
       error: "",
       originalPhotoURL: upload.publicURL,
+      localPath: upload.localPath,
+      contentType: upload.contentType || "image/jpeg",
       seed: seed ?? Math.floor(Math.random() * 1_000_000_000),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -300,8 +331,18 @@ async function createJob(request, response) {
     return created;
   });
 
+  logBackend("job_created", {
+    jobId: job.jobId,
+    userId: auth.sub,
+    styleGoal: job.styleGoal,
+    styleGoals: job.styleGoals,
+    subjectGender: job.subjectGender,
+    styleProfile: job.styleProfile,
+    seed: job.seed
+  });
+
   runGeneration(job.jobId).catch((error) => {
-    console.error("Generation failed", error);
+    logBackend("job_background_error", { jobId: job.jobId, error: error.message || String(error) });
   });
 
   sendJSON(response, 200, generationJobResponse(job));
@@ -387,21 +428,41 @@ async function serveUpload(pathname, response) {
 async function runGeneration(jobId) {
   const job = await transitionJob(jobId, { status: "processing", progress: 5 });
   if (!job) {
+    logBackend("job_missing_on_start", { jobId });
     return;
   }
 
+  const startedAt = Date.now();
+  logBackend("job_processing_started", {
+    jobId,
+    styleGoal: job.styleGoal,
+    styleGoals: job.styleGoals,
+    subjectGender: job.subjectGender,
+    mockGeneration: config.enableMockGeneration,
+    fallbackToMockOnFalBilling: config.fallbackToMockOnFalBilling
+  });
   broadcastJobUpdate(jobId, { type: "progress", percent: 5 });
 
   try {
-    const resultURLs = await generateStyleVariants({
+    const looks = await generateStyleVariants({
       imageURL: job.originalPhotoURL,
+      imagePath: job.localPath,
+      contentType: job.contentType,
       styleGoal: job.styleGoal,
+      styleGoals: job.styleGoals,
+      subjectGender: job.subjectGender,
+      styleProfile: job.styleProfile,
+      userId: job.userId,
       seed: job.seed,
-      onProgress: (percent) => updateProgress(jobId, percent)
+      jobId,
+      onProgress: (percent) => updateProgress(jobId, percent),
+      onLookReady: (look) => appendGeneratedLook(jobId, look)
     });
+    const resultURLs = looks.map((look) => look.imageURL).filter(Boolean);
 
     if (cancelledJobs.has(jobId)) {
       cancelledJobs.delete(jobId);
+      logBackend("job_cancelled_after_generation", { jobId });
       return;
     }
 
@@ -409,22 +470,38 @@ async function runGeneration(jobId) {
       status: "completed",
       progress: 100,
       resultURLs,
+      looks,
       error: ""
     });
-    broadcastJobUpdate(jobId, { type: "completed", resultURLs });
+    logBackend("job_completed", {
+      jobId,
+      durationMs: Date.now() - startedAt,
+      lookCount: looks.length,
+      resultCount: resultURLs.length
+    });
+    broadcastJobUpdate(jobId, { type: "completed", resultURLs, looks });
   } catch (error) {
     if (cancelledJobs.has(jobId)) {
       cancelledJobs.delete(jobId);
+      logBackend("job_cancelled_after_error", { jobId });
       return;
     }
+
+    logBackend("job_failed", {
+      jobId,
+      durationMs: Date.now() - startedAt,
+      ...serializeError(error)
+    });
+    const publicError = publicGenerationError(error);
 
     await transitionJob(jobId, {
       status: "failed",
       progress: 100,
       resultURLs: [],
-      error: error.message || "Generation failed."
+      looks: [],
+      error: publicError
     });
-    broadcastJobUpdate(jobId, { type: "failed", error: "Generation failed. Your credits have not been used." });
+    broadcastJobUpdate(jobId, { type: "failed", error: publicError });
   }
 }
 
@@ -434,8 +511,53 @@ async function updateProgress(jobId, percent) {
   }
 
   const bounded = Math.max(0, Math.min(99, Math.round(percent)));
+  logBackend("job_progress", { jobId, percent: bounded });
   await transitionJob(jobId, { status: "processing", progress: bounded });
   broadcastJobUpdate(jobId, { type: "progress", percent: bounded });
+}
+
+async function appendGeneratedLook(jobId, look) {
+  if (cancelledJobs.has(jobId)) {
+    return;
+  }
+
+  const job = await store.mutate(async (data) => {
+    const candidate = data.jobs.find((item) => item.jobId === jobId);
+    if (!candidate) {
+      return null;
+    }
+
+    const existingLooks = Array.isArray(candidate.looks) ? candidate.looks : [];
+    const nextLooks = existingLooks.filter((item) => item.id !== look.id);
+    nextLooks.push(look);
+    nextLooks.sort((lhs, rhs) => styleOrder(candidate.styleGoals, lhs.styleGoal) - styleOrder(candidate.styleGoals, rhs.styleGoal));
+
+    candidate.looks = nextLooks;
+    candidate.resultURLs = nextLooks.map((item) => item.imageURL).filter(Boolean);
+    candidate.updatedAt = new Date().toISOString();
+    return { ...candidate };
+  });
+
+  if (!job) {
+    return;
+  }
+
+  logBackend("job_look_ready", {
+    jobId,
+    styleGoal: look.styleGoal,
+    readyCount: job.looks.length,
+    totalCount: job.styleGoals.length
+  });
+  broadcastJobUpdate(jobId, {
+    type: "partial",
+    resultURLs: job.resultURLs || [],
+    looks: job.looks || []
+  });
+}
+
+function styleOrder(styleGoals = [], styleGoal) {
+  const index = styleGoals.indexOf(styleGoal);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
 async function transitionJob(jobId, patch) {
@@ -459,7 +581,7 @@ async function sendInitialJobUpdate(jobId, userId, socket) {
   }
 
   if (job.status === "completed") {
-    sendJobUpdate(socket, { type: "completed", resultURLs: job.resultURLs });
+    sendJobUpdate(socket, { type: "completed", resultURLs: job.resultURLs, looks: job.looks || [] });
   } else if (job.status === "failed") {
     sendJobUpdate(socket, { type: "failed", error: "Generation failed. Your credits have not been used." });
   } else {
@@ -481,6 +603,9 @@ function generationJobResponse(job) {
     status: job.status,
     progress: job.progress,
     resultURLs: job.resultURLs || [],
+    looks: job.looks || [],
+    subjectGender: job.subjectGender || "male",
+    styleProfile: job.styleProfile || null,
     error: job.error || null
   };
 }
@@ -492,8 +617,121 @@ function historyItemResponse(job) {
     styleGoal: job.styleGoal,
     thumbnailURL: job.resultURLs?.[0] || null,
     resultURLs: job.resultURLs || [],
+    looks: job.looks || [],
+    subjectGender: job.subjectGender || "male",
+    styleProfile: job.styleProfile || null,
     originalPhotoURL: job.originalPhotoURL,
     createdAt: job.createdAt,
     isSaved: false
   };
+}
+
+function normalizeStyleGoals(primaryGoal, requestedGoals) {
+  const requested = Array.isArray(requestedGoals) ? requestedGoals : [];
+  const goals = [primaryGoal, ...requested]
+    .map((goal) => String(goal || "").trim())
+    .filter((goal) => allowedStyleGoals.has(goal));
+
+  return [...new Set(goals)].slice(0, 5);
+}
+
+function normalizeSubjectGender(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["female", "woman", "women"].includes(normalized)) {
+    return "female";
+  }
+  if (["nonbinary", "non-binary", "nb"].includes(normalized)) {
+    return "nonbinary";
+  }
+
+  return "male";
+}
+
+function normalizeStyleProfile(value = {}) {
+  return {
+    subjectGender: normalizeSubjectGender(value.subjectGender),
+    ageRange: cleanProfileValue(value.ageRange, "adult"),
+    bodyType: cleanProfileValue(value.bodyType),
+    heightRange: cleanProfileValue(value.heightRange),
+    skinTone: cleanProfileValue(value.skinTone),
+    undertone: cleanProfileValue(value.undertone),
+    hairColor: cleanProfileValue(value.hairColor),
+    faceShape: cleanProfileValue(value.faceShape),
+    fitPreference: cleanProfileValue(value.fitPreference),
+    colorPreference: cleanProfileValue(value.colorPreference),
+    modestyPreference: cleanProfileValue(value.modestyPreference),
+    climate: cleanProfileValue(value.climate),
+    occasion: cleanProfileValue(value.occasion),
+    budget: cleanProfileValue(value.budget),
+    stylePersona: cleanProfileValue(value.stylePersona),
+    favoriteColors: normalizeProfileList(value.favoriteColors).slice(0, 6),
+    avoid: normalizeProfileList(value.avoid).slice(0, 8)
+  };
+}
+
+function cleanProfileValue(value, fallback = "") {
+  const cleaned = String(value || "").trim().replace(/[^\w\s.,&/-]/g, "").slice(0, 80);
+  return cleaned || fallback;
+}
+
+function normalizeProfileList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => cleanProfileValue(item)).filter(Boolean);
+  }
+
+  return String(value || "")
+    .split(",")
+    .map((item) => cleanProfileValue(item))
+    .filter(Boolean);
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function logBackend(event, details = {}) {
+  console.log(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    service: "styleai-backend",
+    event,
+    ...details
+  }));
+}
+
+function serializeError(error) {
+  return {
+    error: error?.message || String(error),
+    errorName: error?.name || "",
+    status: error?.status || null,
+    requestId: error?.requestId || "",
+    fieldErrors: Array.isArray(error?.fieldErrors)
+      ? error.fieldErrors.map((item) => ({
+        loc: item.loc,
+        msg: item.msg,
+        type: item.type
+      }))
+      : undefined,
+    body: summarizeErrorBody(error?.body)
+  };
+}
+
+function publicGenerationError(error) {
+  if (error instanceof FalBillingError) {
+    return error.message;
+  }
+
+  return error?.message || "Generation failed. Your credits have not been used.";
+}
+
+function summarizeErrorBody(body) {
+  if (!body) {
+    return undefined;
+  }
+
+  try {
+    const cloned = JSON.parse(JSON.stringify(body));
+    return cloned.detail || cloned;
+  } catch {
+    return String(body).slice(0, 500);
+  }
 }

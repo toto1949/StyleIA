@@ -74,6 +74,7 @@ export const config = Object.freeze({
   maxUploadBytes: number(process.env.STYLEAI_MAX_UPLOAD_BYTES, 12_000_000),
   appleClientId: process.env.APPLE_CLIENT_ID || "",
   falKey: process.env.FAL_KEY || "",
-  falModel: process.env.FAL_MODEL || "fal-ai/ip-adapter-face-id",
-  enableMockGeneration: bool(process.env.STYLEAI_ENABLE_MOCK_GENERATION, false)
+  falModel: process.env.FAL_MODEL || "fal-ai/flux-pro/kontext",
+  enableMockGeneration: bool(process.env.STYLEAI_ENABLE_MOCK_GENERATION, false),
+  fallbackToMockOnFalBilling: bool(process.env.STYLEAI_FAL_FALLBACK_TO_MOCK_ON_BILLING, false)
 });

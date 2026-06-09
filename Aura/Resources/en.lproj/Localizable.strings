@@ -79,13 +79,7 @@
 "profile.savedCount" = "Saved looks";
 "profile.share" = "Share the App";
 "profile.signOut" = "Sign Out";
-"profile.subscription" = "Subscription";
-"profile.subscription.free" = "Free";
-"profile.subscription.freeDetail" = "3 generations/month";
-"profile.subscription.pro" = "Pro";
-"profile.subscription.proDetail" = "$9.99/month, unlimited";
 "profile.title" = "Profile";
-"profile.upgrade" = "Upgrade to Pro";
 "profile.version" = "App version";
 "results.imageUnavailable" = "That image is not available right now.";
 "results.loading" = "Loading your result...";

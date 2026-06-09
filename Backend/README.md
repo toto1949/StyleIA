@@ -31,9 +31,47 @@ On a physical iPhone, replace `localhost` with your Mac's LAN IP and set `PUBLIC
 - `STYLEAI_JWT_SECRET`: a strong secret, at least 32 random bytes.
 - `APPLE_CLIENT_ID`: the Sign in with Apple audience. For this app it should match the configured app/service identifier, for example `toto.StyleAI`.
 - `FAL_KEY`: server-side fal.ai API key. Never put this in the iOS app.
-- `FAL_MODEL`: defaults to `fal-ai/ip-adapter-face-id`.
+- `FAL_MODEL`: defaults to `fal-ai/flux-pro/kontext`.
+- `FAL_KONTEXT_NUM_INFERENCE_STEPS`: optional Kontext step count. Defaults to `28`.
+- `FAL_KONTEXT_GUIDANCE_SCALE`: optional Kontext guidance scale. Defaults to `3.5`.
+- `STYLEAI_ENABLE_MOCK_GENERATION`: set to `true` to skip fal.ai entirely for local UI testing.
+- `STYLEAI_FAL_FALLBACK_TO_MOCK_ON_BILLING`: set to `true` to return mock looks when fal.ai returns a billing/balance lock during local QA.
 
 `npm start` loads `Backend/.env` automatically.
+
+## Generation request contract
+
+`POST /v1/jobs` accepts profile data used to personalize prompts and avoid repeated generic looks across users:
+
+```json
+{
+  "s3Key": "uploads/example.jpg",
+  "styleGoal": "casual",
+  "styleGoals": ["casual", "professional", "sporty", "luxury", "streetwear"],
+  "subjectGender": "female",
+  "styleProfile": {
+    "subjectGender": "female",
+    "ageRange": "25-34",
+    "bodyType": "petite",
+    "heightRange": "short",
+    "skinTone": "medium",
+    "undertone": "warm olive",
+    "hairColor": "dark brown",
+    "faceShape": "oval",
+    "fitPreference": "clean tailored feminine fit",
+    "colorPreference": "earth tones",
+    "modestyPreference": "balanced modern coverage",
+    "climate": "temperate",
+    "occasion": "daily style discovery",
+    "budget": "mid premium",
+    "stylePersona": "minimal editorial",
+    "favoriteColors": ["olive", "ivory"],
+    "avoid": ["boxy fit"]
+  }
+}
+```
+
+Supported `subjectGender` values are `male`, `female`, and `nonbinary`. The backend stores the normalized profile on the job, uses it in the fal prompt, derives a per-user style signature from `userId + seed + profile`, and returns product matches under each look.
 
 ## Implemented API
 
