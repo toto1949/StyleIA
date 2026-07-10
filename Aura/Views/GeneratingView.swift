@@ -1,19 +1,24 @@
 import Combine
 import SwiftUI
 
-/// Smart loading sequence: timed status phases + real backend progress.
+/// Loading sequence driven by real backend progress. The backend reports
+/// milestones (20 = photo uploaded to the generator, 60 = rendering,
+/// 95 = finishing); a slow creep between milestones keeps the bar alive.
 struct GeneratingView: View {
     @ObservedObject var viewModel: SceneMeViewModel
 
-    @State private var phaseIndex = 0
+    @State private var creep = 0
     @State private var ringRotation: Double = 0
 
-    private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    /// Progress milestones marking the end of each phase.
+    private static let milestones = [20, 60, 95, 100]
 
     private var phases: [(message: String, systemImage: String)] {
         [
-            ("Placing you in \(viewModel.generatingSceneName)…", "mappin.and.ellipse"),
-            ("Matching outfit to the vibe…", "tshirt"),
+            ("Uploading and analyzing your photo…", "person.crop.rectangle.badge.plus"),
+            ("Placing you in \(viewModel.generatingSceneName), styling your outfit…", "tshirt"),
             ("Rendering lighting and atmosphere…", "sparkles"),
             ("Almost there…", "wand.and.stars")
         ]
@@ -28,10 +33,21 @@ struct GeneratingView: View {
         ]
     }
 
-    /// Timed progress hits 90% at the last phase; real backend progress can push past it.
+    /// Current phase derived from the real backend progress.
+    private var phaseIndex: Int {
+        let progress = viewModel.generationProgress
+        if progress >= 95 { return 3 }
+        if progress >= 60 { return 2 }
+        if progress >= 20 { return 1 }
+        return 0
+    }
+
+    /// Real progress plus a slow creep, capped just below the next milestone
+    /// so the bar keeps moving without ever lying about being further ahead.
     private var displayedProgress: Int {
-        let timedTarget = [25, 55, 75, 90][min(phaseIndex, 3)]
-        return min(max(viewModel.generationProgress, timedTarget), 99)
+        let real = viewModel.generationProgress
+        let ceiling = Self.milestones[phaseIndex] - 1
+        return min(max(real, min(real + creep, ceiling)), 99)
     }
 
     var body: some View {
@@ -68,17 +84,23 @@ struct GeneratingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SceneMeTheme.ink)
         .onAppear {
-            phaseIndex = 0
+            creep = 0
             withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) {
                 ringRotation = 360
             }
         }
         .onReceive(timer) { _ in
-            guard phaseIndex < phases.count - 1 else { return }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
-                phaseIndex += 1
+            withAnimation(.easeInOut(duration: 0.5)) {
+                creep += 2
             }
         }
+        .onChange(of: viewModel.generationProgress) { _, _ in
+            // A real milestone arrived — restart the creep from the new baseline.
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+                creep = 0
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.86), value: phaseIndex)
     }
 
     private var loadingCard: some View {

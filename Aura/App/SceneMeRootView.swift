@@ -299,11 +299,7 @@ private struct GalleryView: View {
                 }
                 .padding(.top, 16)
 
-                Picker("", selection: $favoritesOnly) {
-                    Text("All").tag(false)
-                    Text("Favorites").tag(true)
-                }
-                .pickerStyle(.segmented)
+                galleryFilter
 
                 if results.isEmpty {
                     VStack(spacing: 10) {
@@ -341,6 +337,51 @@ private struct GalleryView: View {
         }
         .scrollIndicators(.hidden)
         .background(SceneMeTheme.ink)
+    }
+
+    private var galleryFilter: some View {
+        HStack(spacing: 8) {
+            filterChip(title: "All", count: viewModel.history.count, isSelected: !favoritesOnly) {
+                favoritesOnly = false
+            }
+            filterChip(title: "Favorites", count: viewModel.favoriteResults.count, isSelected: favoritesOnly) {
+                favoritesOnly = true
+            }
+            Spacer()
+        }
+    }
+
+    private func filterChip(title: String, count: Int, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                action()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                if title == "Favorites" {
+                    Image(systemName: isSelected ? "heart.fill" : "heart")
+                        .font(.system(size: 10, weight: .bold))
+                }
+
+                Text(title.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.4)
+
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundStyle(isSelected ? Color.black.opacity(0.6) : SceneMeTheme.faintText)
+            }
+            .foregroundStyle(isSelected ? Color.black.opacity(0.88) : SceneMeTheme.subtleText)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.panel)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule().stroke(isSelected ? Color.clear : SceneMeTheme.hairline, lineWidth: 1)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(SceneMePressButtonStyle())
     }
 }
 
@@ -405,7 +446,6 @@ private struct ProfileView: View {
 
                 VStack(spacing: 4) {
                     row(icon: "photo", title: "Photo", value: viewModel.userPhoto == nil ? "Not uploaded" : "Uploaded")
-                    row(icon: "link", title: "Backend", value: Secrets.backendAPIBaseURL?.host ?? "Not configured")
                     row(icon: "number", title: "Version", value: versionText)
                 }
                 .padding(16)

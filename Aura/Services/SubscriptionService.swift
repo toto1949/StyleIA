@@ -48,8 +48,10 @@ final class SubscriptionService: ObservableObject {
                 return !(lhsID?.isYearly ?? false) && (rhsID?.isYearly ?? true)
             }
         } catch {
-            // Products stay empty; paywall will show price placeholders.
+            // Products stay empty; paywall shows a loading state and retries.
+            #if DEBUG
             print("[SubscriptionService] Product fetch failed: \(error)")
+            #endif
         }
     }
 
@@ -93,7 +95,9 @@ final class SubscriptionService: ObservableObject {
         do {
             try await AppStore.sync()
         } catch {
+            #if DEBUG
             print("[SubscriptionService] Restore sync failed: \(error)")
+            #endif
         }
         await refreshEntitlement()
     }
@@ -128,7 +132,9 @@ final class SubscriptionService: ObservableObject {
                     await transaction.finish()
                     await refreshEntitlement()
                 } catch {
+                    #if DEBUG
                     print("[SubscriptionService] Unverified transaction: \(error)")
+                    #endif
                 }
             }
         }
