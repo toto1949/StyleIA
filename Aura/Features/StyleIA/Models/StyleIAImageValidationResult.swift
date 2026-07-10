@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-enum StyleIAImageWarning: Equatable, Sendable {
+nonisolated enum StyleIAImageWarning: Equatable, Sendable {
     case noFaceDetected
     case multipleFacesDetected(count: Int)
     case multiplePeopleDetected(count: Int)
@@ -33,7 +33,7 @@ enum StyleIAImageWarning: Equatable, Sendable {
     }
 }
 
-struct StyleIAImageValidationResult: Equatable, Sendable {
+nonisolated struct StyleIAImageValidationResult: Equatable, Sendable {
     let isValid: Bool
     let confidence: Double
     let warnings: [StyleIAImageWarning]
@@ -43,14 +43,14 @@ struct StyleIAImageValidationResult: Equatable, Sendable {
     let personBoundingBox: CGRect?
 }
 
-struct StyleIAOptimizedImage: Equatable, Sendable {
+nonisolated struct StyleIAOptimizedImage: Equatable, Sendable {
     let data: Data
     let contentType: String
     let pixelSize: CGSize
     let byteCount: Int
 }
 
-enum StyleIAImageProcessingError: Error, LocalizedError, Equatable {
+nonisolated enum StyleIAImageProcessingError: Error, LocalizedError, Equatable {
     case missingImage
     case unreadableImage
     case analysisFailed(String)
@@ -74,7 +74,7 @@ enum StyleIAImageProcessingError: Error, LocalizedError, Equatable {
 }
 
 /// Pure validation rules used by Vision analysis and unit tests.
-enum StyleIAImageValidationPolicy {
+nonisolated enum StyleIAImageValidationPolicy {
     struct Signals: Equatable, Sendable {
         let humanCount: Int
         let humanConfidence: Double

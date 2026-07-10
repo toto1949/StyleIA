@@ -1,0 +1,46 @@
+# Render Blueprint for the SceneMe backend.
+# Deploy: Render Dashboard -> New -> Blueprint -> select this repo.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# NOTE (free tier): the filesystem is ephemeral, so user accounts, jobs and
+# uploaded photos are lost on every restart or deploy. Before launching for
+# real, switch `plan: free` to `plan: starter` and uncomment the disk block
+# below so data survives restarts.
+
+services:
+  - type: web
+    name: sceneme-backend
+    runtime: node
+    rootDir: Backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Signed session tokens; Render generates a strong random value once.
+      - key: STYLEAI_JWT_SECRET
+        generateValue: true
+      # Your fal.ai API key (dashboard prompts for this on first deploy).
+      - key: FAL_KEY
+        sync: false
+      # Must match the iOS app's bundle identifier (Sign in with Apple audience).
+      - key: APPLE_CLIENT_ID
+        sync: false
+      # Optional: iOS OAuth client ID for Google Sign-In. Leave blank if unused.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: STYLEAI_DATA_PATH
+        value: ./data/styleai.json
+      - key: STYLEAI_UPLOAD_DIR
+        value: ./uploads
+    # --- Persistent storage (requires a paid instance type) ---
+    # Switch plan to `starter` above, then uncomment. Move data + uploads onto
+    # the disk by pointing the env vars at /var/data:
+    #   STYLEAI_DATA_PATH:  /var/data/styleai.json
+    #   STYLEAI_UPLOAD_DIR: /var/data/uploads
+    # disk:
+    #   name: sceneme-data
+    #   mountPath: /var/data
+    #   sizeGB: 5

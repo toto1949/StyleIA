@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>StyleAI</string>
+	<string>SceneMe</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,34 +13,27 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>StyleAI</string>
+	<string>SceneMe</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>GIDClientID</key>
+	<string></string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>StyleAI uses your camera to capture photos for style generation.</string>
+	<string>SceneMe uses your camera to capture photos for scene generation.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>StyleAI saves your generated style results to your photo library.</string>
+	<string>SceneMe saves your generated scenes and postcards to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>StyleAI accesses your photos so you can choose an image for style generation.</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>StyleAI connects to your local development backend to test style generation.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_http._tcp</string>
-	</array>
+	<string>SceneMe accesses your photos so you can choose an image for scene generation.</string>
 	<key>STYLEIA_API_BASE_URL</key>
-	<string>http://192.168.1.169:8080/v1</string>
+	<string></string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

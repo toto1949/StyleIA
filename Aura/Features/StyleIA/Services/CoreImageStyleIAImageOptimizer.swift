@@ -1,7 +1,7 @@
 import CoreImage
 import UIKit
 
-final class CoreImageStyleIAImageOptimizer: StyleIAImageOptimizing, @unchecked Sendable {
+nonisolated final class CoreImageStyleIAImageOptimizer: StyleIAImageOptimizing, @unchecked Sendable {
     private let settings: StyleIAImageOptimizationSettings
     private let context: CIContext
 
@@ -151,7 +151,7 @@ final class CoreImageStyleIAImageOptimizer: StyleIAImageOptimizing, @unchecked S
     }
 }
 
-private extension UIImage {
+nonisolated private extension UIImage {
     func normalizedUIImage() -> UIImage {
         guard imageOrientation != .up else { return self }
 

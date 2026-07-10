@@ -2,7 +2,7 @@ import CoreVideo
 import UIKit
 import Vision
 
-final class VisionStyleIAImageAnalyzer: StyleIAImageAnalyzing, @unchecked Sendable {
+nonisolated final class VisionStyleIAImageAnalyzer: StyleIAImageAnalyzing, @unchecked Sendable {
     func validate(_ image: UIImage) async throws -> StyleIAImageValidationResult {
         try await Task.detached(priority: .userInitiated) {
             try Self.analyze(image)
@@ -131,7 +131,7 @@ final class VisionStyleIAImageAnalyzer: StyleIAImageAnalyzing, @unchecked Sendab
     }
 }
 
-private extension UIImage {
+nonisolated private extension UIImage {
     func normalizedCGImage() -> CGImage? {
         guard imageOrientation != .up else { return cgImage }
 
@@ -143,7 +143,7 @@ private extension UIImage {
     }
 }
 
-private extension CGImagePropertyOrientation {
+nonisolated private extension CGImagePropertyOrientation {
     init(_ orientation: UIImage.Orientation) {
         switch orientation {
         case .up: self = .up

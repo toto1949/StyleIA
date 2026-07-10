@@ -8,6 +8,11 @@ const appleKeyCache = {
   keys: []
 };
 
+const googleKeyCache = {
+  fetchedAt: 0,
+  keys: []
+};
+
 function hmac(input) {
   return crypto.createHmac("sha256", config.jwtSecret).update(input).digest();
 }
@@ -176,4 +181,82 @@ async function appleKeys() {
   appleKeyCache.keys = Array.isArray(payload.keys) ? payload.keys : [];
   appleKeyCache.fetchedAt = now;
   return appleKeyCache.keys;
+}
+
+export async function verifyGoogleIdentityToken(identityToken) {
+  const parts = String(identityToken || "").split(".");
+  if (parts.length !== 3) {
+    throw new HttpError(401, "Invalid Google identity token.");
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  const header = parseBase64URLJSON(encodedHeader);
+  const payload = parseBase64URLJSON(encodedPayload);
+
+  const issuer = String(payload.iss || "");
+  if (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") {
+    throw new HttpError(401, "Invalid Google identity token.");
+  }
+
+  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+    throw new HttpError(401, "Google identity token expired.");
+  }
+
+  const audience = String(payload.aud || "");
+  const allowedAudiences = config.googleClientIds.length > 0 ? config.googleClientIds : [config.googleClientId];
+  if (allowedAudiences.length > 0 && !allowedAudiences.includes(audience)) {
+    throw new HttpError(401, "Google identity token audience mismatch.");
+  }
+
+  if (allowedAudiences.length === 0 && config.nodeEnv === "production") {
+    throw new Error("GOOGLE_CLIENT_ID must be configured in production.");
+  }
+
+  const jwk = (await googleKeys()).find((candidate) => candidate.kid === header.kid);
+  if (!jwk) {
+    throw new HttpError(401, "Google signing key not found.");
+  }
+
+  const key = await crypto.webcrypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+
+  const isValid = await crypto.webcrypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    base64URLDecode(encodedSignature),
+    Buffer.from(`${encodedHeader}.${encodedPayload}`)
+  );
+
+  if (!isValid) {
+    throw new HttpError(401, "Invalid Google identity token signature.");
+  }
+
+  return {
+    googleSub: payload.sub,
+    email: payload.email || "",
+    emailVerified: payload.email_verified === true || payload.email_verified === "true",
+    fullName: payload.name || ""
+  };
+}
+
+async function googleKeys() {
+  const now = Date.now();
+  if (googleKeyCache.keys.length > 0 && now - googleKeyCache.fetchedAt < 60 * 60 * 1000) {
+    return googleKeyCache.keys;
+  }
+
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/certs");
+  if (!response.ok) {
+    throw new Error("Unable to fetch Google signing keys.");
+  }
+
+  const payload = await response.json();
+  googleKeyCache.keys = Array.isArray(payload.keys) ? payload.keys : [];
+  googleKeyCache.fetchedAt = now;
+  return googleKeyCache.keys;
 }

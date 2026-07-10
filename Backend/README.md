@@ -30,6 +30,7 @@ On a physical iPhone, replace `localhost` with your Mac's LAN IP and set `PUBLIC
 - `PUBLIC_BASE_URL`: a public HTTPS URL reachable by fal.ai. For local fal.ai testing, use an HTTPS tunnel such as ngrok or Cloudflare Tunnel.
 - `STYLEAI_JWT_SECRET`: a strong secret, at least 32 random bytes.
 - `APPLE_CLIENT_ID`: the Sign in with Apple audience. For this app it should match the configured app/service identifier, for example `toto.StyleAI`.
+- `GOOGLE_CLIENT_ID`: the Google OAuth iOS client ID (ends with `.apps.googleusercontent.com`). Must match `GIDClientID` in the iOS app.
 - `FAL_KEY`: server-side fal.ai API key. Never put this in the iOS app.
 - `FAL_MODEL`: defaults to `fal-ai/flux-pro/kontext`.
 - `FAL_KONTEXT_NUM_INFERENCE_STEPS`: optional Kontext step count. Defaults to `28`.
@@ -77,6 +78,7 @@ Supported `subjectGender` values are `male`, `female`, and `nonbinary`. The back
 
 - `POST /v1/auth/email`
 - `POST /v1/auth/apple`
+- `POST /v1/auth/google`
 - `POST /v1/upload/presign`
 - `PUT /v1/upload/:uploadId?token=...`
 - `POST /v1/jobs`

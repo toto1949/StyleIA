@@ -1,13 +1,16 @@
 import SwiftUI
 
 @main
-struct StyleAIApp: App {
-    var body: some Scene {
+struct SceneMeApp: App {
+    var body: some SwiftUI.Scene {
         WindowGroup {
-            StyleIATabRootView()
-                .tint(StyleIATheme.moss)
+            SceneMeRootView()
+                .tint(SceneMeTheme.gold)
                 .task {
-                    StyleIALocalNetworkPermission.warmUpIfNeeded()
+                    SocialAuthService.shared.configureGoogleIfNeeded()
+                }
+                .onOpenURL { url in
+                    _ = SocialAuthService.shared.handleGoogleURL(url)
                 }
         }
     }

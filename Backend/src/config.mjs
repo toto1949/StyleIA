@@ -67,14 +67,38 @@ function jwtSecret() {
 export const config = Object.freeze({
   nodeEnv: process.env.NODE_ENV || "development",
   port: number(process.env.PORT, 8080),
-  publicBaseURL: (process.env.PUBLIC_BASE_URL || "http://localhost:8080").replace(/\/+$/, ""),
+  // RENDER_EXTERNAL_URL is injected automatically when hosted on Render.
+  publicBaseURL: (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:8080").replace(/\/+$/, ""),
   jwtSecret: jwtSecret(),
   dataPath: resolveFromRoot(process.env.STYLEAI_DATA_PATH, "./data/styleai.json"),
   uploadDirectory: resolveFromRoot(process.env.STYLEAI_UPLOAD_DIR, "./uploads"),
   maxUploadBytes: number(process.env.STYLEAI_MAX_UPLOAD_BYTES, 12_000_000),
   appleClientId: process.env.APPLE_CLIENT_ID || "",
+  googleClientId: process.env.GOOGLE_CLIENT_ID || "",
+  googleClientIds: String(process.env.GOOGLE_CLIENT_IDS || process.env.GOOGLE_CLIENT_ID || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
   falKey: process.env.FAL_KEY || "",
   falModel: process.env.FAL_MODEL || "fal-ai/flux-pro/kontext",
   enableMockGeneration: bool(process.env.STYLEAI_ENABLE_MOCK_GENERATION, false),
-  fallbackToMockOnFalBilling: bool(process.env.STYLEAI_FAL_FALLBACK_TO_MOCK_ON_BILLING, false)
+  fallbackToMockOnFalBilling: bool(process.env.STYLEAI_FAL_FALLBACK_TO_MOCK_ON_BILLING, false),
+
+  // Cost controls.
+  // Eco mode swaps image generation to the cheaper kontext dev endpoint and
+  // drops video resolution to the lowest tier.
+  ecoMode: bool(process.env.STYLEAI_ECO_MODE, false),
+  falEcoModel: process.env.FAL_ECO_MODEL || "fal-ai/flux-kontext/dev",
+  // Reuse a previously generated result when the same user re-requests the
+  // exact same photo + prompt combination (zero fal cost on repeats).
+  reuseIdenticalResults: bool(process.env.STYLEAI_REUSE_IDENTICAL_RESULTS, true),
+
+  // Video generation (PixVerse is currently the cheapest image-to-video on fal:
+  // ~$0.025/s at 360p, ~$0.045/s at 720p).
+  falVideoModel: process.env.FAL_VIDEO_MODEL || "fal-ai/pixverse/v6/image-to-video",
+  videoDurationSeconds: number(process.env.STYLEAI_VIDEO_DURATION_SECONDS, 5),
+  videoResolution: process.env.STYLEAI_VIDEO_RESOLUTION
+    || (bool(process.env.STYLEAI_ECO_MODE, false) ? "360p" : "540p"),
+  mockVideoURL: process.env.STYLEAI_MOCK_VIDEO_URL
+    || "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
 });

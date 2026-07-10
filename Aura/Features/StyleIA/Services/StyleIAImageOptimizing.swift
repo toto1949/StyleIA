@@ -4,7 +4,7 @@ protocol StyleIAImageOptimizing: Sendable {
     func optimize(_ image: UIImage, suggestedCrop: CGRect?) async throws -> StyleIAOptimizedImage
 }
 
-struct StyleIAImageOptimizationSettings: Equatable, Sendable {
+nonisolated struct StyleIAImageOptimizationSettings: Equatable, Sendable {
     let maxLongEdge: CGFloat
     let targetMaxBytes: Int
     let initialJPEGQuality: CGFloat
