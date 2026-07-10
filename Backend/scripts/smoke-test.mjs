@@ -75,7 +75,8 @@ const job1 = await api("/v1/scene-jobs", {
 
 if (!job1.prompt.includes("adult woman")) fail("prompt missing female subject");
 if (!job1.prompt.includes("heeled boots")) fail("prompt missing female outfit");
-if (!job1.prompt.includes("negative prompt:")) fail("prompt missing negative block");
+if (!job1.prompt.includes("keep the person's face 100% identical")) fail("prompt missing identity lock");
+if (!job1.prompt.includes("billboards tower behind")) fail("prompt missing scene signature");
 if (job1.kind !== "image") fail("expected image kind");
 const done1 = await waitForJob(job1.jobId, token);
 if (!done1.imageURL) fail("job1 missing imageURL");

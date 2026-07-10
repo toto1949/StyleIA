@@ -1,47 +1,62 @@
+// Prompt builder for FLUX Kontext — an instruction-following image EDITING
+// model. It responds best to clear natural-language sentences that say what
+// to change and, critically, what to KEEP. It has no negative-prompt input:
+// naming unwanted concepts ("no beard", "no cartoon") makes them MORE likely,
+// so everything below is phrased positively.
+
 const timeMap = {
-  morning: "soft morning light, golden sunrise tones, gentle long shadows",
-  golden_hour: "warm golden hour light, long cinematic shadows, amber glow on skin and surfaces",
-  night: "dramatic night lighting, artificial lights, rich shadow depth"
+  morning: "soft morning light with golden sunrise tones and gentle long shadows",
+  golden_hour: "warm golden hour light, low sun, long cinematic shadows, amber glow on skin and surfaces",
+  night: "dramatic night lighting from artificial sources with rich shadow depth"
 };
 
 const weatherMap = {
-  sunny: "clear blue sky, bright natural sunlight, crisp visibility",
-  rainy: "rain falling, wet reflective streets, person holding an umbrella, water droplets catching the light",
-  snowy: "snow falling softly, snow dusting surfaces, breath visible in the cold air",
-  foggy: "atmospheric fog, moody diffused light, soft depth haze"
+  sunny: "a clear blue sky and bright natural sunlight with crisp visibility",
+  rainy: "steady rain, wet reflective streets, the person holding an umbrella, droplets catching the light",
+  snowy: "snow falling softly, a light dusting of snow on surfaces, breath visible in the cold air",
+  foggy: "atmospheric fog with moody diffused light and soft depth haze"
 };
 
 const poseMap = {
-  casual: "relaxed natural standing pose, weight on one leg, at ease",
-  walking: "mid-stride walking motion, candid street-photography energy",
-  candid: "looking away from camera, caught in a natural unposed moment",
+  casual: "standing in a relaxed natural pose, weight on one leg, at ease",
+  walking: "walking mid-stride with candid street-photography energy",
+  candid: "looking away from the camera, caught in a natural unposed moment",
   sitting: "sitting naturally with relaxed posture",
-  action: "dynamic action pose, energetic and full of movement"
+  action: "in a dynamic action pose, energetic and full of movement"
+};
+
+// A distinct photographic identity per scene, so a Santorini shot and a
+// Shibuya shot feel like they came from two different editorial shoots
+// instead of the same template with a swapped backdrop.
+const sceneSignatures = {
+  "times-square": "Shoot from a slightly low angle so the glowing billboards tower behind the subject, neon color spill reflecting subtly on their skin and outfit.",
+  "paris-cafe": "Frame it like an intimate street-style story beside a marble bistro table, warm café glow, the boulevard melting into soft romantic bokeh.",
+  "tokyo-shibuya": "Give it a cinematic Tokyo night-street look, neon signage glowing in the bokeh, wet-pavement reflections adding depth around the subject.",
+  "dubai-rooftop": "Compose it as a sleek high-fashion editorial with the skyline sweeping behind, warm sunset rim light tracing the subject.",
+  "santorini": "Keep the frame bright and airy like a travel editorial, white Cycladic architecture cascading behind, the sea breeze moving fabric and hair.",
+  "sahara-desert": "Use an epic wide cinematic frame, a dune ridgeline leading the eye to the subject, wind lifting fine sand off the crest.",
+  "northern-lights": "Style it like a long-exposure night photograph, the aurora glowing overhead, cool green rim light outlining the subject against the dark landscape.",
+  "maldives-villa": "Compose a serene barefoot-luxury editorial, turquoise lagoon glowing behind, soft tropical light wrapping the subject.",
+  "hotel-lobby": "Use a grand, almost symmetrical composition between the marble columns, warm chandelier light layering the depth behind the subject.",
+  "f1-paddock": "Shoot it like dynamic motorsport reportage, the race car and pit garage in energetic bokeh, glossy floor reflections under the subject.",
+  "yacht-mediterranean": "Frame a sun-drenched nautical editorial, the deck lines leading to the subject, sunlight sparkling off the sea behind.",
+  "art-gallery": "Compose with minimalist gallery restraint, generous negative space on the white walls, a precise museum spotlight sculpting the subject.",
+  "nba-courtside": "Make it feel like a candid celebrity courtside photo, arena floodlights and jumbotron glow, the game alive but blurred behind.",
+  "coachella": "Bathe the frame in golden festival haze, the ferris wheel silhouetted behind, a touch of warm lens flare.",
+  "red-carpet": "Light it with crisp paparazzi flash against the glowing step-and-repeat backdrop, glossy premiere-night glamour."
+};
+
+const categorySignatures = {
+  urban: "Give it authentic street-photography energy, the subject sharp against the motion of the city.",
+  luxury: "Compose it like a polished luxury-magazine editorial, aspirational and refined.",
+  nature: "Frame it like epic travel photography, the landscape vast and breathtaking around the subject.",
+  events: "Capture a VIP event-photography feel, the atmosphere electric around the subject.",
+  custom: ""
 };
 
 export const allowedTimes = Object.keys(timeMap);
 export const allowedWeather = Object.keys(weatherMap);
 export const allowedPoses = Object.keys(poseMap);
-
-const REROLL_SUFFIX = "completely different outfit than before, same scene, same face, same background";
-
-const QUALITY_BLOCK = [
-  "photorealistic",
-  "ultra detailed",
-  "natural skin texture with visible pores",
-  "accurate color of skin, hair, and eyes matching the input photo",
-  "cinematic color grading",
-  "shot on a professional full-frame camera, 50mm lens, f/2.8",
-  "sharp focus on the subject"
-].join(", ");
-
-const ANATOMY_BLOCK = [
-  "realistic human anatomy",
-  "correct hands with five fingers each",
-  "no duplicated or missing limbs",
-  "no cropped head, no cropped feet",
-  "natural body proportions matching the input photo"
-].join(", ");
 
 export function buildPrompt({
   scene,
@@ -52,37 +67,45 @@ export function buildPrompt({
   hasCompanion = false,
   reroll = false
 }) {
-  const base = scene.base_prompt;
-  const outfit = outfitFor(scene, subjectGender);
   const gender = normalizeSubjectGender(subjectGender);
+  const noun = subjectNoun(gender);
+  const outfit = outfitFor(scene, gender);
 
   // "clear blue sky, bright sunlight" contradicts night scenes, so swap in a night-safe clear-sky phrase.
   const weatherText = weather === "sunny" && timeOfDay === "night"
-    ? "clear night sky, crisp air, stars faintly visible"
+    ? "a clear night sky, crisp air, stars faintly visible"
     : weatherMap[weather] || weatherMap.sunny;
 
-  const parts = [
-    `The exact same ${subjectNoun(gender)} from the input image, now ${base}`,
-    `wearing ${outfit}, the outfit fits the body naturally with realistic fabric drape`,
-    timeMap[timeOfDay] || timeMap.golden_hour,
-    weatherText,
-    poseMap[pose] || poseMap.casual,
-    identityBlock(gender),
+  const sentences = [
+    // 1. The edit instruction: what changes.
+    `Place the exact same ${noun} from the input photo ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+
+    // 2. Outfit swap.
+    `Dress them in ${outfit}; the clothing fits their real body shape with natural fabric drape, realistic seams and correct proportions.`,
+
+    // 3. Pose + scene-specific photographic identity.
+    `They are ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
+
+    // 4. Identity lock: what must NOT change (phrased as what to keep).
+    identitySentence(gender),
+
+    // 5. Person count.
     hasCompanion
-      ? "exactly two people together naturally in the scene, both faces preserved exactly from the input images, natural interaction between them"
-      : "exactly one person in the scene",
-    "the subject is the clear focal point, centered, visible from head to shoes, feet and shoes in frame",
-    "vertical full-body composition, camera at chest height",
-    ANATOMY_BLOCK,
-    QUALITY_BLOCK,
-    negativeBlock(gender)
+      ? "Exactly two people share the scene naturally, interacting warmly; both faces are kept perfectly identical to their respective input photos."
+      : "Exactly one person appears in the scene.",
+
+    // 6. Framing.
+    "Full-body vertical composition with the subject as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
+
+    // 7. Realism and craft.
+    "Render it as a photorealistic photograph shot on a professional full-frame camera with a 50mm lens at f/2.8: natural skin texture with visible pores, true-to-photo skin tone, anatomically correct hands with five fingers each, natural body proportions, sharp focus on the subject, cinematic color grading."
   ];
 
   if (reroll) {
-    parts.push(REROLL_SUFFIX);
+    sentences.push("Change only the outfit into a completely different style and color palette than before, while keeping the face, pose, scene and background exactly the same.");
   }
 
-  return parts.filter(Boolean).join(", ");
+  return sentences.filter(Boolean).join(" ");
 }
 
 /// Cinematic motion prompt for image-to-video, derived from the generated still.
@@ -113,13 +136,15 @@ export function buildVideoPrompt({ scene, timeOfDay, weather, pose }) {
     timeMotion[timeOfDay] || timeMotion.golden_hour,
     "background alive with subtle natural movement",
     "slow smooth cinematic camera push-in",
-    "preserve the person's exact appearance, face, and outfit from the input image",
-    "photorealistic, stable, no morphing, no warping of the face"
+    "the person's face, identity and outfit stay perfectly consistent with the input image in every frame, stable and photorealistic"
   ].join(", ");
 }
 
-function outfitFor(scene, subjectGender) {
-  const gender = normalizeSubjectGender(subjectGender);
+function signatureFor(scene) {
+  return sceneSignatures[scene.id] || categorySignatures[scene.category] || "";
+}
+
+function outfitFor(scene, gender) {
   if (gender === "male" && scene.male_outfit) {
     return scene.male_outfit;
   }
@@ -139,34 +164,21 @@ function subjectNoun(gender) {
   return "person";
 }
 
-function identityBlock(gender) {
-  const base = [
-    "preserve the exact facial identity from the input photo",
-    "same face geometry, same eyes, nose, mouth, jawline, and hairline",
-    "same skin tone, same age, same hair color and hairstyle",
-    "keep glasses, freckles, moles, or facial marks if present",
-    "do not beautify into a different person, do not change ethnicity, do not change gender identity"
+function identitySentence(gender) {
+  const parts = [
+    "Critically important: keep the person's face 100% identical to the input photo",
+    "the same face geometry, eyes, eyebrows, nose, mouth, jawline and hairline",
+    "the same skin tone, the same apparent age, the same hair color, length and hairstyle",
+    "the same expression character, and any glasses, freckles, moles or facial marks kept exactly where they are"
   ];
 
   if (gender === "male") {
-    base.push("preserve beard or facial hair shape exactly if present");
+    parts.push("his facial hair kept in exactly the same shape, length and density as the photo");
   } else if (gender === "female") {
-    base.push("preserve existing makeup or makeup-free appearance exactly, do not masculinize the face");
+    parts.push("her makeup or natural bare-skin look kept exactly as in the photo");
   }
 
-  return base.join(", ");
-}
-
-function negativeBlock(gender) {
-  const common = "negative prompt: different person, changed identity, face swap artifacts, distorted or blurry face, plastic skin, bad anatomy, extra limbs, extra fingers, fused fingers, duplicate person, cartoon, illustration, painting, 3d render, mannequin, watermark, text, logo overlay";
-
-  if (gender === "male") {
-    return `${common}, feminine face, makeup, woman, girl`;
-  }
-  if (gender === "female") {
-    return `${common}, masculine face, beard, mustache, man, boy`;
-  }
-  return common;
+  return `${parts.join(", ")}. The face must remain instantly recognizable as this specific person, as if they were truly photographed on location.`;
 }
 
 export function normalizeSubjectGender(value) {
