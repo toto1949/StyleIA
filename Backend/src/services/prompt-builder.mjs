@@ -65,6 +65,7 @@ export function buildPrompt({
   pose,
   subjectGender = "auto",
   hasCompanion = false,
+  companionKind = "friend",
   reroll = false
 }) {
   const gender = normalizeSubjectGender(subjectGender);
@@ -90,9 +91,7 @@ export function buildPrompt({
     identitySentence(gender),
 
     // 5. Person count.
-    hasCompanion
-      ? "Exactly two people share the scene naturally, interacting warmly; both faces are kept perfectly identical to their respective input photos."
-      : "Exactly one person appears in the scene.",
+    companionSentence(hasCompanion, companionKind),
 
     // 6. Framing.
     "Full-body vertical composition with the subject as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
@@ -138,6 +137,22 @@ export function buildVideoPrompt({ scene, timeOfDay, weather, pose }) {
     "slow smooth cinematic camera push-in",
     "the person's face, identity and outfit stay perfectly consistent with the input image in every frame, stable and photorealistic"
   ].join(", ");
+}
+
+function companionSentence(hasCompanion, companionKind) {
+  if (!hasCompanion) {
+    return "Exactly one person appears in the scene.";
+  }
+
+  if (companionKind === "pet") {
+    return "The person's pet from the second input photo joins them naturally at their side; keep the pet's species, breed, size, fur color and unique markings exactly identical to its photo. Exactly one person and one pet appear in the scene.";
+  }
+
+  return "Exactly two people share the scene naturally, interacting warmly; both faces are kept perfectly identical to their respective input photos.";
+}
+
+export function normalizeCompanionKind(value) {
+  return String(value || "").trim().toLowerCase() === "pet" ? "pet" : "friend";
 }
 
 function signatureFor(scene) {

@@ -36,6 +36,7 @@ struct GenerationService {
         let sceneId: String
         let customScene: CustomScenePayload?
         let subjectGender: String
+        let companionKind: String
         let timeOfDay: String
         let weather: String
         let pose: String
@@ -60,6 +61,7 @@ struct GenerationService {
                     ? CustomScenePayload(name: scene.name, basePrompt: scene.basePrompt, outfit: scene.defaultOutfit)
                     : nil,
                 subjectGender: request.subjectGender.rawValue,
+                companionKind: request.companionKind.rawValue,
                 timeOfDay: request.timeOfDay.rawValue,
                 weather: request.weather.rawValue,
                 pose: request.pose.rawValue,

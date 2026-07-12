@@ -13,6 +13,7 @@ import {
   buildCustomScene,
   buildPrompt,
   buildVideoPrompt,
+  normalizeCompanionKind,
   normalizePose,
   normalizeSubjectGender,
   normalizeTimeOfDay,
@@ -51,6 +52,7 @@ export async function rerollSceneJob(request, response, sourceJobId) {
     sceneId: source.sceneId,
     customScene: source.customScene || null,
     subjectGender: source.subjectGender,
+    companionKind: source.companionKind,
     timeOfDay: source.timeOfDay,
     weather: source.weather,
     pose: source.pose
@@ -187,8 +189,9 @@ async function insertSceneJob(userId, body, { reroll }) {
   const weather = normalizeWeather(body.weather, scene);
   const pose = normalizePose(body.pose);
   const hasCompanion = Boolean(companionS3Key);
+  const companionKind = normalizeCompanionKind(body.companionKind);
 
-  const prompt = buildPrompt({ scene, timeOfDay, weather, pose, subjectGender, hasCompanion, reroll });
+  const prompt = buildPrompt({ scene, timeOfDay, weather, pose, subjectGender, hasCompanion, companionKind, reroll });
   const seed = Number.isFinite(Number(body.seed))
     ? Number(body.seed)
     : Math.floor(Math.random() * 1_000_000_000);
@@ -227,6 +230,7 @@ async function insertSceneJob(userId, body, { reroll }) {
         ? { name: customScene.name, basePrompt: customScene.base_prompt, outfit: customScene.default_outfit }
         : null,
       subjectGender,
+      companionKind,
       timeOfDay,
       weather,
       pose,

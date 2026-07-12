@@ -6,6 +6,8 @@ struct ResultView: View {
 
     @State private var selectedFilter: CinematicFilter = .original
     @State private var filteredCache: [CinematicFilter: UIImage] = [:]
+    /// Watermarked (free tier) or clean (subscribers) copy used for save & share.
+    @State private var exportImage: UIImage?
     @State private var showPostcard = false
     @State private var showFilters = false
     /// Fit mode shows the entire image (uncropped) and hides the controls.
@@ -77,9 +79,11 @@ struct ResultView: View {
         .onChange(of: viewModel.resultImage) { _, _ in
             filteredCache = [:]
             selectedFilter = .original
+            refreshExportImage()
         }
         .task(id: selectedFilter) {
             await applySelectedFilter()
+            refreshExportImage()
         }
         .sheet(isPresented: $showPostcard) {
             if let image = displayedUIImage {
@@ -224,7 +228,7 @@ struct ResultView: View {
                         viewModel.toggleFavorite(result)
                     }
 
-                    if let image = displayedUIImage {
+                    if let image = exportImage ?? displayedUIImage {
                         ShareLink(
                             item: Image(uiImage: image),
                             preview: SharePreview(result.sceneName, image: Image(uiImage: image))
@@ -368,7 +372,7 @@ struct ResultView: View {
             Spacer()
 
             actionButton(systemImage: "arrow.down.to.line", title: "Save") {
-                if let image = displayedUIImage {
+                if let image = exportImage ?? displayedUIImage {
                     viewModel.saveToPhotoLibrary(image)
                 }
             }
@@ -417,7 +421,7 @@ struct ResultView: View {
 
     private func bottomButtons(for result: GenerationResult) -> some View {
         HStack(spacing: 12) {
-            if let image = displayedUIImage {
+            if let image = exportImage ?? displayedUIImage {
                 ShareLink(
                     item: Image(uiImage: image),
                     preview: SharePreview(result.sceneName, image: Image(uiImage: image))
@@ -465,6 +469,19 @@ struct ResultView: View {
             }
             .buttonStyle(SceneMePressButtonStyle())
         }
+    }
+
+    // MARK: - Export
+
+    private func refreshExportImage() {
+        guard let base = displayedUIImage else {
+            exportImage = nil
+            return
+        }
+
+        exportImage = viewModel.currentTier.removesWatermark
+            ? base
+            : SceneMeWatermark.apply(to: base)
     }
 
     // MARK: - Filters

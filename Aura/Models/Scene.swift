@@ -73,15 +73,18 @@ enum SceneCategory: String, Codable, CaseIterable, Identifiable {
     case nature
     case luxury
     case events
+    case professional
     case custom
 
     var id: String { rawValue }
 
-    var title: String { rawValue.capitalized }
+    var title: String {
+        self == .professional ? "Pro Headshots" : rawValue.capitalized
+    }
 
     /// Categories shown as filter chips in the picker (custom scenes are user-made).
     static var pickerCases: [SceneCategory] {
-        [.urban, .nature, .luxury, .events]
+        [.urban, .nature, .luxury, .events, .professional]
     }
 }
 
@@ -89,6 +92,7 @@ enum SceneBadge: String, Codable {
     case popular
     case new
     case premium
+    case limited
 
     var title: String {
         switch self {
@@ -98,6 +102,8 @@ enum SceneBadge: String, Codable {
             return "+ NEW"
         case .premium:
             return "◆ PREMIUM"
+        case .limited:
+            return "⏳ LIMITED"
         }
     }
 }

@@ -35,6 +35,8 @@ struct SceneThumbnail: View {
             palette = [Color(hex: 0x2E2415), Color(hex: 0x140F08)]
         case .events:
             palette = [Color(hex: 0x2C1626), Color(hex: 0x120A10)]
+        case .professional:
+            palette = [Color(hex: 0x20262E), Color(hex: 0x0C0F13)]
         case .custom:
             palette = [Color(hex: 0x24202E), Color(hex: 0x0E0C13)]
         }

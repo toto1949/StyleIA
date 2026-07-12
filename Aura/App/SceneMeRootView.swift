@@ -444,6 +444,8 @@ private struct ProfileView: View {
 
                 subscriptionCard
 
+                passportCard
+
                 VStack(spacing: 4) {
                     row(icon: "photo", title: "Photo", value: viewModel.userPhoto == nil ? "Not uploaded" : "Uploaded")
                     row(icon: "number", title: "Version", value: versionText)
@@ -572,6 +574,78 @@ private struct ProfileView: View {
         .overlay {
             RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
                 .stroke(tier == .free ? SceneMeTheme.hairline : SceneMeTheme.gold.opacity(0.35), lineWidth: 1)
+        }
+    }
+
+    /// Scene Passport — a collectible record of every destination visited.
+    private var passportCard: some View {
+        let catalog = viewModel.scenes.filter { !$0.isCustom }
+        let visitedIds = Set(viewModel.history.map(\.sceneId))
+        let visitedCount = catalog.filter { visitedIds.contains($0.id) }.count
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SCENE PASSPORT")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(2)
+                        .foregroundStyle(SceneMeTheme.gold)
+
+                    Text(visitedCount == catalog.count && !catalog.isEmpty
+                        ? "Every destination visited — world traveler!"
+                        : "\(visitedCount) of \(catalog.count) destinations visited")
+                        .font(.system(size: 13))
+                        .foregroundStyle(SceneMeTheme.subtleText)
+                }
+
+                Spacer()
+
+                Image(systemName: "globe.europe.africa.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(SceneMeTheme.gold)
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
+                ForEach(catalog) { scene in
+                    passportStamp(scene: scene, visited: visitedIds.contains(scene.id))
+                }
+            }
+        }
+        .padding(16)
+        .background(SceneMeTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
+                .stroke(SceneMeTheme.hairline, lineWidth: 1)
+        }
+    }
+
+    private func passportStamp(scene: SceneTemplate, visited: Bool) -> some View {
+        VStack(spacing: 5) {
+            Image(systemName: visited ? "checkmark.seal.fill" : "circle.dashed")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(visited ? SceneMeTheme.gold : SceneMeTheme.faintText)
+
+            Text(scene.name)
+                .font(.system(size: 10, weight: visited ? .semibold : .regular))
+                .foregroundStyle(visited ? SceneMeTheme.text : SceneMeTheme.faintText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(visited ? SceneMeTheme.gold.opacity(0.08) : SceneMeTheme.ink)
+        .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous)
+                .stroke(visited ? SceneMeTheme.gold.opacity(0.35) : SceneMeTheme.hairline, lineWidth: 1)
         }
     }
 

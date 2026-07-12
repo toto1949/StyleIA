@@ -1,10 +1,17 @@
 import PhotosUI
 import SwiftUI
 
-/// "Bring a Friend" card — toggle reveals a second photo upload.
+/// "Bring a Friend or Pet" card — toggle reveals a second photo upload.
 struct CompanionUploadView: View {
     @ObservedObject var viewModel: SceneMeViewModel
     @State private var isEnabled = false
+
+    private var companionKind: Binding<CompanionKind> {
+        Binding(
+            get: { viewModel.request?.companionKind ?? .friend },
+            set: { viewModel.request?.companionKind = $0 }
+        )
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -21,18 +28,20 @@ struct CompanionUploadView: View {
                             .frame(width: 42, height: 42)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     } else {
-                        Image(systemName: "person.fill.badge.plus")
+                        Image(systemName: companionKind.wrappedValue == .pet ? "pawprint.fill" : "person.fill.badge.plus")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(SceneMeTheme.subtleText)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Bring a Friend")
+                    Text("Bring a Friend or Pet")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(SceneMeTheme.text)
 
-                    Text("Upload a second photo to appear together")
+                    Text(companionKind.wrappedValue == .pet
+                        ? "Upload your pet's photo to appear together"
+                        : "Upload a second photo to appear together")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(SceneMeTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -46,6 +55,13 @@ struct CompanionUploadView: View {
             }
 
             if isEnabled {
+                HStack(spacing: 8) {
+                    ForEach(CompanionKind.allCases) { kind in
+                        kindChip(kind)
+                    }
+                    Spacer()
+                }
+
                 let hasPhoto = viewModel.companionPhoto != nil
                 PhotosPicker(selection: $viewModel.companionItem, matching: .images) {
                     HStack(spacing: 8) {
@@ -88,5 +104,33 @@ struct CompanionUploadView: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isEnabled)
+    }
+
+    private func kindChip(_ kind: CompanionKind) -> some View {
+        let isSelected = companionKind.wrappedValue == kind
+
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                companionKind.wrappedValue = kind
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: kind.systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(kind.title.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.2)
+            }
+            .foregroundStyle(isSelected ? Color.black.opacity(0.88) : SceneMeTheme.subtleText)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.surface)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule().stroke(isSelected ? Color.clear : SceneMeTheme.hairline, lineWidth: 1)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(SceneMePressButtonStyle())
     }
 }

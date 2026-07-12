@@ -48,6 +48,7 @@ enum SubscriptionTier: Int, Comparable, Codable {
     var canRerollOutfit: Bool         { self >= .creator }
     var canUseCinematicFilters: Bool  { self >= .creator }
     var usesMaxQuality: Bool          { self >= .pro }
+    var removesWatermark: Bool        { self >= .creator }
 
     // MARK: Feature descriptions (used in the paywall)
 
@@ -66,8 +67,14 @@ enum SubscriptionTier: Int, Comparable, Codable {
             proValue: "Unlimited"
         ),
         Feature(
-            title: "All 15 scenes",
+            title: "All scenes + weekly drops",
             freeValue: "✓",
+            creatorValue: "✓",
+            proValue: "✓"
+        ),
+        Feature(
+            title: "Watermark-free exports",
+            freeValue: nil,
             creatorValue: "✓",
             proValue: "✓"
         ),

@@ -28,7 +28,24 @@ export async function findScene(sceneId) {
   return scene;
 }
 
+/// Scenes can carry optional `available_from` / `available_until` ISO dates
+/// for limited-time drops. Expired or not-yet-live scenes are hidden from the
+/// list, but findScene still resolves them so in-flight jobs keep working.
+function isSceneLive(scene, now) {
+  const from = scene.available_from ? Date.parse(scene.available_from) : NaN;
+  const until = scene.available_until ? Date.parse(scene.available_until) : NaN;
+
+  if (Number.isFinite(from) && now < from) {
+    return false;
+  }
+  if (Number.isFinite(until) && now > until) {
+    return false;
+  }
+  return true;
+}
+
 export async function listScenes(_request, response) {
   const scenes = await loadScenes();
-  sendJSON(response, 200, { scenes });
+  const now = Date.now();
+  sendJSON(response, 200, { scenes: scenes.filter((scene) => isSceneLive(scene, now)) });
 }

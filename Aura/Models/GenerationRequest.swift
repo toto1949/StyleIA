@@ -124,6 +124,32 @@ enum SubjectGender: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Who the second photo shows — a friend or a pet.
+enum CompanionKind: String, Codable, CaseIterable, Identifiable {
+    case friend
+    case pet
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .friend:
+            return "Friend"
+        case .pet:
+            return "Pet"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .friend:
+            return "person.fill"
+        case .pet:
+            return "pawprint.fill"
+        }
+    }
+}
+
 /// Everything needed to ask the backend for one scene generation.
 struct GenerationRequest: Equatable {
     let scene: SceneTemplate
@@ -132,6 +158,7 @@ struct GenerationRequest: Equatable {
     var pose: PoseOption
     var subjectGender: SubjectGender
     var hasCompanion: Bool
+    var companionKind: CompanionKind
 
     init(scene: SceneTemplate) {
         self.scene = scene
@@ -140,6 +167,7 @@ struct GenerationRequest: Equatable {
         self.pose = .casual
         self.subjectGender = .auto
         self.hasCompanion = false
+        self.companionKind = .friend
     }
 
     /// Human readable summary shown in the "Your scene preview" footer.
@@ -153,7 +181,7 @@ struct GenerationRequest: Equatable {
                 : "outfit styled for a \(subjectGender.title.lowercased())"
         ]
         if hasCompanion {
-            parts.append("with a friend")
+            parts.append(companionKind == .pet ? "with your pet" : "with a friend")
         }
         return parts.joined(separator: ", ") + "…"
     }
