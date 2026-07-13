@@ -1,0 +1,135 @@
+{
+  "identifier" : "8F4D2C9A-1B6E-4E3A-9C7D-52A80F1E6B24",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "3A7E5D21-9C4B-4F8A-B2D6-E1F0938C5A47",
+      "localizations" : [
+
+      ],
+      "name" : "SceneMe Membership",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "C1A9F3E7-6B2D-4C8E-A5F0-19D3B7E64C82",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "30 generations, filters, re-rolls",
+              "displayName" : "Creator Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.sceneme.creator.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Creator Monthly",
+          "subscriptionGroupID" : "3A7E5D21-9C4B-4F8A-B2D6-E1F0938C5A47",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "D8E4B2A6-3F7C-4D9E-B1A5-27C6F0E93B58",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Creator plan billed once a year",
+              "displayName" : "Creator Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.sceneme.creator.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Creator Yearly",
+          "subscriptionGroupID" : "3A7E5D21-9C4B-4F8A-B2D6-E1F0938C5A47",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "E5C7A9F1-2D8B-4A6C-9E3F-40B1D7C58A96",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited generations, video, companions",
+              "displayName" : "Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.sceneme.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro Monthly",
+          "subscriptionGroupID" : "3A7E5D21-9C4B-4F8A-B2D6-E1F0938C5A47",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "79.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "F2B8D4C0-7A5E-4B3D-8C1F-63E9A0D57B14",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Pro plan billed once a year",
+              "displayName" : "Pro Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.sceneme.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Pro Yearly",
+          "subscriptionGroupID" : "3A7E5D21-9C4B-4F8A-B2D6-E1F0938C5A47",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

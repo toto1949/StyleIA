@@ -5,7 +5,11 @@ struct ResultView: View {
     @ObservedObject var viewModel: SceneMeViewModel
 
     @State private var selectedFilter: CinematicFilter = .original
+    @State private var filterIntensity: Double = 1
+    /// Full-strength grades, cached per filter.
     @State private var filteredCache: [CinematicFilter: UIImage] = [:]
+    /// The grade blended with the original at the chosen strength.
+    @State private var gradedImage: UIImage?
     /// Watermarked (free tier) or clean (subscribers) copy used for save & share.
     @State private var exportImage: UIImage?
     @State private var showPostcard = false
@@ -48,8 +52,12 @@ struct ResultView: View {
                     actionRow(for: result)
 
                     if showFilters {
-                        CinematicFilterView(baseImage: viewModel.resultImage, selection: $selectedFilter)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        CinematicFilterView(
+                            baseImage: viewModel.resultImage,
+                            selection: $selectedFilter,
+                            intensity: $filterIntensity
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
                     bottomButtons(for: result)
@@ -72,17 +80,22 @@ struct ResultView: View {
         .onDisappear {
             hasAppeared = false
             selectedFilter = .original
+            filterIntensity = 1
             filteredCache = [:]
+            gradedImage = nil
             showFilters = false
             showFullImage = false
         }
         .onChange(of: viewModel.resultImage) { _, _ in
             filteredCache = [:]
+            gradedImage = nil
             selectedFilter = .original
+            filterIntensity = 1
             refreshExportImage()
         }
-        .task(id: selectedFilter) {
+        .task(id: "\(selectedFilter.rawValue)|\(filterIntensity)") {
             await applySelectedFilter()
+            await applyIntensity()
             refreshExportImage()
         }
         .sheet(isPresented: $showPostcard) {
@@ -113,7 +126,10 @@ struct ResultView: View {
         guard let base = viewModel.resultImage else {
             return nil
         }
-        return filteredCache[selectedFilter] ?? base
+        guard selectedFilter != .original else {
+            return base
+        }
+        return gradedImage ?? filteredCache[selectedFilter] ?? base
     }
 
     private func fullScreenImage(for result: GenerationResult) -> some View {
@@ -501,5 +517,27 @@ struct ResultView: View {
         }.value
 
         filteredCache[filter] = output
+    }
+
+    /// Blends the full-strength grade with the original at the slider strength.
+    private func applyIntensity() async {
+        guard
+            selectedFilter != .original,
+            let base = viewModel.resultImage,
+            let full = filteredCache[selectedFilter]
+        else {
+            gradedImage = nil
+            return
+        }
+
+        if filterIntensity >= 0.995 {
+            gradedImage = full
+            return
+        }
+
+        let intensity = filterIntensity
+        gradedImage = await Task.detached(priority: .userInitiated) {
+            CinematicFilterEngine.blend(base, full, intensity: intensity)
+        }.value
     }
 }

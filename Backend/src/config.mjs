@@ -81,6 +81,9 @@ export const config = Object.freeze({
     .filter(Boolean),
   falKey: process.env.FAL_KEY || "",
   falModel: process.env.FAL_MODEL || "fal-ai/flux-pro/kontext",
+  // Force a consistent vertical editorial frame regardless of the shape of
+  // the user's uploaded photo — full-body head-to-shoes compositions need it.
+  falImageAspectRatio: process.env.STYLEAI_IMAGE_ASPECT_RATIO || "9:16",
   enableMockGeneration: bool(process.env.STYLEAI_ENABLE_MOCK_GENERATION, false),
   fallbackToMockOnFalBilling: bool(process.env.STYLEAI_FAL_FALLBACK_TO_MOCK_ON_BILLING, false),
 
@@ -98,7 +101,9 @@ export const config = Object.freeze({
   falVideoModel: process.env.FAL_VIDEO_MODEL || "fal-ai/pixverse/v6/image-to-video",
   videoDurationSeconds: number(process.env.STYLEAI_VIDEO_DURATION_SECONDS, 5),
   videoResolution: process.env.STYLEAI_VIDEO_RESOLUTION
-    || (bool(process.env.STYLEAI_ECO_MODE, false) ? "360p" : "540p"),
+    || (bool(process.env.STYLEAI_ECO_MODE, false) ? "360p" : "720p"),
+  videoNegativePrompt: process.env.STYLEAI_VIDEO_NEGATIVE_PROMPT
+    || "blurry, low quality, low resolution, pixelated, noisy, grainy, out of focus, distorted face, face morphing, changing identity, warped features, extra fingers, deformed hands, flickering, jitter, artifacts, watermark, text",
   mockVideoURL: process.env.STYLEAI_MOCK_VIDEO_URL
     || "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
 });

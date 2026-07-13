@@ -141,6 +141,9 @@ async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode =
   if (!safeMode) {
     input.duration = String(config.videoDurationSeconds);
     input.resolution = config.videoResolution;
+    // PixVerse supports negative prompts (unlike Kontext) — use one to fight
+    // the classic image-to-video failure modes: face morphing and flicker.
+    input.negative_prompt = config.videoNegativePrompt;
   }
 
   logFal("video_start", {
@@ -185,6 +188,9 @@ async function runFalRequest({ prompt, userImageURL, companionImageURL, seed, jo
   if (!safeMode) {
     input.num_inference_steps = kontextSteps();
     input.guidance_scale = kontextGuidanceScale();
+    // Consistent vertical editorial frame regardless of the input photo shape;
+    // gives the model room for the head-to-shoes composition the prompt asks for.
+    input.aspect_ratio = config.falImageAspectRatio;
     if (Number.isFinite(seed)) {
       input.seed = seed;
     }

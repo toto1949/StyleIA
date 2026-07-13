@@ -8,10 +8,29 @@ import StoreKit
 final class SubscriptionService: ObservableObject {
     static let shared = SubscriptionService()
 
-    @Published private(set) var tier: SubscriptionTier = .free
+    /// Tier backed by verified StoreKit entitlements.
+    @Published private(set) var entitledTier: SubscriptionTier = .free
     @Published private(set) var products: [Product] = []
     @Published private(set) var isPurchasing = false
     @Published private(set) var isRestoring = false
+
+    #if DEBUG
+    /// Developer override so debug builds can test premium features without a
+    /// StoreKit purchase. Compiled out of Release builds entirely.
+    @Published var debugTierOverride: SubscriptionTier? = SubscriptionService.loadDebugTierOverride() {
+        didSet { SubscriptionService.saveDebugTierOverride(debugTierOverride) }
+    }
+    #endif
+
+    /// The tier the rest of the app honors.
+    var tier: SubscriptionTier {
+        #if DEBUG
+        if let debugTierOverride {
+            return debugTierOverride
+        }
+        #endif
+        return entitledTier
+    }
 
     private var transactionListenerTask: Task<Void, Never>?
 
@@ -119,7 +138,7 @@ final class SubscriptionService: ObservableObject {
             }
         }
 
-        tier = highest
+        entitledTier = highest
     }
 
     // MARK: - Transaction listener
@@ -141,6 +160,25 @@ final class SubscriptionService: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    #if DEBUG
+    private static let debugTierKey = "sceneme.debug.tierOverride"
+
+    private static func loadDebugTierOverride() -> SubscriptionTier? {
+        guard let raw = UserDefaults.standard.object(forKey: debugTierKey) as? Int else {
+            return nil
+        }
+        return SubscriptionTier(rawValue: raw)
+    }
+
+    private static func saveDebugTierOverride(_ value: SubscriptionTier?) {
+        if let value {
+            UserDefaults.standard.set(value.rawValue, forKey: debugTierKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: debugTierKey)
+        }
+    }
+    #endif
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {

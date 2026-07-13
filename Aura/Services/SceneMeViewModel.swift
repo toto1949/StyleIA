@@ -90,6 +90,8 @@ final class SceneMeViewModel: ObservableObject {
     private var persistence = SceneMeHistoryStore(userId: nil)
     private var usageCounter: MonthlyUsageCounter?
 
+    private var cancellables = Set<AnyCancellable>()
+
     private var userPhotoS3Key: String?
     private var companionS3Key: String?
     private var suggestedCrop: CGRect?
@@ -134,6 +136,15 @@ final class SceneMeViewModel: ObservableObject {
         }
         history = persistence.loadHistory()
         favoriteIds = persistence.loadFavorites()
+
+        // Re-render views reading currentTier when entitlements (or the debug
+        // override) change, since they observe this view model, not the service.
+        subscriptionService.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     var isAuthenticated: Bool {

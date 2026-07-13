@@ -444,6 +444,10 @@ private struct ProfileView: View {
 
                 subscriptionCard
 
+                #if DEBUG
+                debugTierCard
+                #endif
+
                 passportCard
 
                 VStack(spacing: 4) {
@@ -576,6 +580,67 @@ private struct ProfileView: View {
                 .stroke(tier == .free ? SceneMeTheme.hairline : SceneMeTheme.gold.opacity(0.35), lineWidth: 1)
         }
     }
+
+    #if DEBUG
+    /// Debug-only tier simulator: force Free / Creator / Pro without StoreKit.
+    /// Not compiled into Release builds.
+    private var debugTierCard: some View {
+        let service = viewModel.subscriptionService
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("DEV · SIMULATE TIER")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(SceneMeTheme.subtleText)
+
+                Spacer()
+
+                Image(systemName: "hammer.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(SceneMeTheme.subtleText)
+            }
+
+            HStack(spacing: 8) {
+                debugTierChip(title: "Live", isSelected: service.debugTierOverride == nil) {
+                    service.debugTierOverride = nil
+                }
+                ForEach([SubscriptionTier.free, .creator, .pro], id: \.rawValue) { tier in
+                    debugTierChip(title: tier.displayName, isSelected: service.debugTierOverride == tier) {
+                        service.debugTierOverride = tier
+                    }
+                }
+            }
+
+            Text("Overrides the subscription for testing. \"Live\" uses the real StoreKit entitlement. Debug builds only — never ships to the App Store.")
+                .font(.system(size: 10))
+                .foregroundStyle(SceneMeTheme.faintText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(SceneMeTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
+                .stroke(SceneMeTheme.hairline, style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+        }
+    }
+
+    private func debugTierChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1)
+                .foregroundStyle(isSelected ? Color.black.opacity(0.88) : SceneMeTheme.subtleText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.surface)
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(SceneMePressButtonStyle())
+    }
+    #endif
 
     /// Scene Passport — a collectible record of every destination visited.
     private var passportCard: some View {

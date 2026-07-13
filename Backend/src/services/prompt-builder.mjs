@@ -108,35 +108,36 @@ export function buildPrompt({
 }
 
 /// Cinematic motion prompt for image-to-video, derived from the generated still.
+/// PixVerse responds best to full sentences that describe restrained, layered
+/// motion; over-promising action is what causes face morphing and warping.
 export function buildVideoPrompt({ scene, timeOfDay, weather, pose }) {
   const ambientMotion = {
-    sunny: "sunlight shimmering subtly, gentle breeze moving hair and clothing",
-    rainy: "rain falling steadily, droplets splashing, reflections rippling on wet ground",
-    snowy: "snowflakes drifting down slowly, soft breath fog in the cold air",
-    foggy: "fog drifting slowly across the scene, light beams shifting through the haze"
+    sunny: "sunlight shimmers softly and a gentle breeze moves hair and fabric",
+    rainy: "steady rain falls, droplets splash and reflections ripple across the wet ground",
+    snowy: "snowflakes drift down slowly and breath fogs faintly in the cold air",
+    foggy: "fog drifts slowly through the frame while diffused light shifts in the haze"
   };
 
   const timeMotion = {
-    morning: "soft morning light slowly warming the scene",
-    golden_hour: "golden light flickering gently as the sun sits low",
-    night: "neon and artificial lights glowing and subtly flickering"
+    morning: "soft morning light gradually warming the scene",
+    golden_hour: "low golden sunlight glowing warmly, flaring gently across the lens",
+    night: "city lights and signage glowing steadily with a subtle shimmer"
   };
 
   const subjectMotion = pose === "walking"
-    ? "the person walks forward slowly and confidently, natural gait"
+    ? "The person walks forward slowly with a confident natural gait, arms swinging gently."
     : pose === "action"
-      ? "the person moves with subtle dynamic energy"
-      : "the person stands nearly still, breathing naturally, slight head turn, hair and clothing moving gently";
+      ? "The person moves with restrained dynamic energy, smooth and controlled."
+      : "The person stands nearly still, breathing naturally, giving a slight relaxed head turn and a hint of a smile while hair and clothing sway gently.";
 
   return [
-    `Cinematic live scene: ${scene.base_prompt}`,
+    `A cinematic living moment ${scene.base_prompt}.`,
     subjectMotion,
-    ambientMotion[weather] || ambientMotion.sunny,
-    timeMotion[timeOfDay] || timeMotion.golden_hour,
-    "background alive with subtle natural movement",
-    "slow smooth cinematic camera push-in",
-    "the person's face, identity and outfit stay perfectly consistent with the input image in every frame, stable and photorealistic"
-  ].join(", ");
+    `Around them, ${ambientMotion[weather] || ambientMotion.sunny}, with ${timeMotion[timeOfDay] || timeMotion.golden_hour}.`,
+    "The background breathes with subtle life — distant figures, light and atmosphere shifting naturally, realistic physics.",
+    "Camera work: one slow, smooth stabilized push-in toward the subject, no cuts, no whip pans, shallow cinematic depth of field.",
+    "The person's face, identity, hairstyle, body and outfit remain perfectly consistent with the input image in every single frame, sharp, stable and photorealistic."
+  ].join(" ");
 }
 
 function companionSentence(hasCompanion, companionKind) {
