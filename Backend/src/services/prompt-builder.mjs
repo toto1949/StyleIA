@@ -58,6 +58,10 @@ export const allowedTimes = Object.keys(timeMap);
 export const allowedWeather = Object.keys(weatherMap);
 export const allowedPoses = Object.keys(poseMap);
 
+// Shared realism/craft instruction used by every generation path.
+const REALISM_SENTENCE =
+  "Render it as a photorealistic photograph shot on a professional full-frame camera with a 50mm lens at f/2.8: natural skin texture with visible pores, true-to-photo skin tone, anatomically correct hands with five fingers each, natural body proportions, sharp focus, cinematic color grading.";
+
 export function buildPrompt({
   scene,
   timeOfDay,
@@ -69,13 +73,19 @@ export function buildPrompt({
   reroll = false
 }) {
   const gender = normalizeSubjectGender(subjectGender);
+
+  // A human companion is a fundamentally different, two-source composition and
+  // needs its own prompt so faces aren't swapped/merged and each person gets
+  // their own suitable outfit.
+  if (hasCompanion && companionKind === "friend") {
+    return buildFriendPrompt({ scene, timeOfDay, weather, pose, reroll });
+  }
+
   const noun = subjectNoun(gender);
   const outfit = outfitFor(scene, gender);
 
   // "clear blue sky, bright sunlight" contradicts night scenes, so swap in a night-safe clear-sky phrase.
-  const weatherText = weather === "sunny" && timeOfDay === "night"
-    ? "a clear night sky, crisp air, stars faintly visible"
-    : weatherMap[weather] || weatherMap.sunny;
+  const weatherText = weatherTextFor(weather, timeOfDay);
 
   const sentences = [
     // 1. The edit instruction: what changes.
@@ -90,14 +100,14 @@ export function buildPrompt({
     // 4. Identity lock: what must NOT change (phrased as what to keep).
     identitySentence(gender),
 
-    // 5. Person count.
+    // 5. Person count (+ pet, if any).
     companionSentence(hasCompanion, companionKind),
 
     // 6. Framing.
     "Full-body vertical composition with the subject as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
 
     // 7. Realism and craft.
-    "Render it as a photorealistic photograph shot on a professional full-frame camera with a 50mm lens at f/2.8: natural skin texture with visible pores, true-to-photo skin tone, anatomically correct hands with five fingers each, natural body proportions, sharp focus on the subject, cinematic color grading."
+    REALISM_SENTENCE
   ];
 
   if (reroll) {
@@ -105,6 +115,43 @@ export function buildPrompt({
   }
 
   return sentences.filter(Boolean).join(" ");
+}
+
+/// Two-person prompt for a human companion. Input images arrive as
+/// [subject, companion]; the prompt maps them to "first" and "second" person,
+/// styles each individually (no single gendered outfit forced on both), and
+/// locks each face to its own source so they aren't blended or swapped.
+function buildFriendPrompt({ scene, timeOfDay, weather, pose, reroll }) {
+  const weatherText = weatherTextFor(weather, timeOfDay);
+  const outfitTheme = scene.default_outfit;
+
+  const sentences = [
+    `Combine two real people into one photograph — the person from the first input image and the person from the second input image, together ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+
+    `Dress each person individually in ${outfitTheme}, tailored to suit that specific person and matching their own gender and body, with natural fabric drape, realistic seams and correct proportions on each of them.`,
+
+    `They stand together side by side, close and interacting warmly and naturally, each ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
+
+    friendIdentitySentence(),
+
+    "Exactly two people appear: the first person's face and body come only from the first input image, and the second person's face and body come only from the second input image, standing a natural distance apart with both fully visible.",
+
+    "Full-body vertical composition with both people sharing the focal point, both visible from head to shoes, all feet and footwear inside the frame, camera at chest height.",
+
+    REALISM_SENTENCE
+  ];
+
+  if (reroll) {
+    sentences.push("Change only the outfits into a completely different style and color palette than before, while keeping both faces, their poses, the scene and the background exactly the same.");
+  }
+
+  return sentences.filter(Boolean).join(" ");
+}
+
+function weatherTextFor(weather, timeOfDay) {
+  return weather === "sunny" && timeOfDay === "night"
+    ? "a clear night sky, crisp air, stars faintly visible"
+    : weatherMap[weather] || weatherMap.sunny;
 }
 
 /// Cinematic motion prompt for image-to-video, derived from the generated still.
@@ -182,19 +229,26 @@ function subjectNoun(gender) {
 
 function identitySentence(gender) {
   const parts = [
-    "Critically important: keep the person's face 100% identical to the input photo",
-    "the same face geometry, eyes, eyebrows, nose, mouth, jawline and hairline",
-    "the same skin tone, the same apparent age, the same hair color, length and hairstyle",
-    "the same expression character, and any glasses, freckles, moles or facial marks kept exactly where they are"
+    "Critically important: this is a face-preserving edit — keep the person's face 100% identical to the input photo",
+    "the exact same face geometry and proportions, eyes, eyebrows, nose, mouth, lips, jawline, cheekbones and hairline",
+    "the same skin tone and complexion, the same apparent age, the same body shape and weight",
+    "the same hair color, length and hairstyle",
+    "and any glasses, freckles, moles, scars or facial marks kept exactly where they are"
   ];
 
   if (gender === "male") {
     parts.push("his facial hair kept in exactly the same shape, length and density as the photo");
   } else if (gender === "female") {
-    parts.push("her makeup or natural bare-skin look kept exactly as in the photo");
+    parts.push("her exact same facial features and natural look preserved, with any makeup or bare-skin look kept as in the photo");
   }
 
-  return `${parts.join(", ")}. The face must remain instantly recognizable as this specific person, as if they were truly photographed on location.`;
+  // FLUX tends to beautify/idealize faces (especially women); this clause is
+  // what counteracts that drift and keeps the result recognizable.
+  return `${parts.join(", ")}. Do not beautify, smooth, slim, retouch, de-age or idealize the face or body in any way, and do not turn them into a generic attractive model — keep their real, unique features exactly, even if imperfect. The face must remain instantly recognizable as this exact same person, as if they were truly photographed on location.`;
+}
+
+function friendIdentitySentence() {
+  return "Critically important: keep the first person's face 100% identical to the first input photo and the second person's face 100% identical to the second input photo — for each of them the exact same face geometry, eyes, nose, mouth, jawline, cheekbones, skin tone, apparent age, body shape, hair color, length and hairstyle, plus any glasses, freckles, moles or marks. Never swap, blend, merge, average or mix up the two faces, and never copy one person's features onto the other. Do not beautify, slim or idealize either person. Each must stay instantly recognizable as the specific individual from their own input photo.";
 }
 
 export function normalizeSubjectGender(value) {
