@@ -479,6 +479,8 @@ private struct ProfileView: View {
                         .stroke(SceneMeTheme.hairline, lineWidth: 1)
                 }
 
+                legalLinks
+
                 accountActions
             }
             .padding(.horizontal, 22)
@@ -729,6 +731,17 @@ private struct ProfileView: View {
             RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous)
                 .stroke(visited ? SceneMeTheme.gold.opacity(0.35) : SceneMeTheme.hairline, lineWidth: 1)
         }
+    }
+
+    private var legalLinks: some View {
+        HStack(spacing: 18) {
+            Link("Privacy Policy", destination: Secrets.privacyPolicyURL)
+            Link("Terms of Use", destination: Secrets.termsOfUseURL)
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(SceneMeTheme.subtleText)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
     }
 
     private var accountActions: some View {
