@@ -479,6 +479,9 @@ private struct ProfileView: View {
                         .stroke(SceneMeTheme.hairline, lineWidth: 1)
                 }
 
+                // Same place users look in Instagram / Spotify / Apple apps: Profile → Legal.
+                SceneMeLegal.SettingsSection()
+
                 accountActions
             }
             .padding(.horizontal, 22)

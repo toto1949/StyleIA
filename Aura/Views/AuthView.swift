@@ -97,6 +97,9 @@ struct AuthView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(SceneMeTheme.faintText)
                     .multilineTextAlignment(.center)
+
+                SceneMeLegal.InlineLinks()
+                    .padding(.top, 8)
             }
             .padding(.horizontal, 26)
             .padding(.bottom, 40)
