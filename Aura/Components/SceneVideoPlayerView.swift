@@ -32,6 +32,11 @@ struct SceneVideoPlayerView: View {
                     .tint(SceneMeTheme.gold)
             }
 
+            // Always-on signature — top trailing so it never fights the lower-third caption.
+            SceneMeSignatureOverlay(corner: .topTrailing, compact: true)
+                .padding(.top, 64)
+                .padding(.trailing, 8)
+
             // Broadcast-style lower-third caption for Talking clips.
             if let trimmedCaption {
                 VStack {
@@ -60,7 +65,7 @@ struct SceneVideoPlayerView: View {
 
             VStack(spacing: 14) {
                 HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
+                    Text(SceneMeSignature.diamond)
                         .font(.system(size: 11, weight: .semibold))
                     Text("\(sceneName) — Live")
                         .font(.system(size: 13, weight: .semibold))

@@ -97,6 +97,12 @@ struct AuraTests {
         #expect(postcard.size.height > input.size.height)
     }
 
+    @Test func sceneMeWatermarkKeepsDimensions() {
+        let input = solidImage(size: CGSize(width: 320, height: 480))
+        let branded = SceneMeWatermark.apply(to: input)
+        #expect(branded.size == input.size)
+    }
+
     private func solidImage(size: CGSize) -> UIImage {
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1

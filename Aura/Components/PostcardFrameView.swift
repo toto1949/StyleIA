@@ -58,6 +58,7 @@ enum PostcardRenderer {
 
             let nameFont = serifFont(size: 17 * scale)
             let dateFont = serifFont(size: 13 * scale)
+            let brandFont = serifFont(size: 13 * scale)
             let stripCenterY = cursorY + stripHeight / 2
 
             let nameAttributes: [NSAttributedString.Key: Any] = [
@@ -66,7 +67,7 @@ enum PostcardRenderer {
             ]
             let nameSize = (sceneName as NSString).size(withAttributes: nameAttributes)
             (sceneName as NSString).draw(
-                at: CGPoint(x: border, y: stripCenterY - nameSize.height / 2),
+                at: CGPoint(x: border, y: stripCenterY - nameSize.height / 2 - 6 * scale),
                 withAttributes: nameAttributes
             )
 
@@ -75,15 +76,27 @@ enum PostcardRenderer {
             let dateText = formatter.string(from: date)
             let dateAttributes: [NSAttributedString.Key: Any] = [
                 .font: dateFont,
-                .foregroundColor: textColor.withAlphaComponent(0.6)
+                .foregroundColor: textColor.withAlphaComponent(0.55)
             ]
-            let dateSize = (dateText as NSString).size(withAttributes: dateAttributes)
             (dateText as NSString).draw(
-                at: CGPoint(
-                    x: canvasSize.width - border - dateSize.width,
-                    y: stripCenterY - dateSize.height / 2
-                ),
+                at: CGPoint(x: border, y: stripCenterY + 4 * scale),
                 withAttributes: dateAttributes
+            )
+
+            // Brand signature on every postcard — designed frame, not a free-tier tax.
+            let brand = "\(SceneMeSignature.diamond) \(SceneMeSignature.markText)" as NSString
+            let brandAttributes: [NSAttributedString.Key: Any] = [
+                .font: brandFont,
+                .foregroundColor: SceneMeSignature.goldUIColor,
+                .kern: 0.4
+            ]
+            let brandSize = brand.size(withAttributes: brandAttributes)
+            brand.draw(
+                at: CGPoint(
+                    x: canvasSize.width - border - brandSize.width,
+                    y: stripCenterY - brandSize.height / 2
+                ),
+                withAttributes: brandAttributes
             )
         }
     }

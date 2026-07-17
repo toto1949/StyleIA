@@ -7,6 +7,7 @@ struct SceneJobResponse: Decodable {
     let progress: Int
     let imageURL: URL?
     let videoURL: URL?
+    let videoClips: [VideoClipPayload]?
     let sceneId: String
     let sceneName: String
     let sceneLocation: String
@@ -18,8 +19,18 @@ struct SceneJobResponse: Decodable {
     let isReroll: Bool
     let motionStyle: String?
     let spokenLine: String?
-    let createdAt: String
+    let directionNote: String?
+    let createdAt: String?
     let error: String?
+}
+
+struct VideoClipPayload: Decodable {
+    let cacheKey: String
+    let motionStyle: String
+    let spokenLine: String?
+    let directionNote: String?
+    let videoURL: URL
+    let createdAt: String?
 }
 
 /// Creates scene generation jobs on the backend and polls them to completion.
@@ -99,12 +110,17 @@ struct GenerationService {
     private struct VideoJobRequest: Encodable {
         let motionStyle: String
         let spokenLine: String
+        let directionNote: String
     }
 
     struct AnimatedClip {
         let videoURL: URL
         let caption: String?
         let motionStyle: String?
+        let spokenLine: String?
+        let directionNote: String?
+        let cacheKey: String?
+        let library: [SceneVideoClip]
     }
 
     /// Animates a completed scene into a short directed clip and returns the video URL.
@@ -112,20 +128,27 @@ struct GenerationService {
         jobId: String,
         motionStyle: VideoMotionStyle,
         spokenLine: String,
+        directionNote: String,
         token: String,
         onProgress: @MainActor @escaping (Int) -> Void
     ) async throws -> AnimatedClip {
         let job: SceneJobResponse = try await api.post(
             "scene-jobs/\(jobId)/video",
-            body: VideoJobRequest(motionStyle: motionStyle.rawValue, spokenLine: spokenLine),
+            body: VideoJobRequest(
+                motionStyle: motionStyle.rawValue,
+                spokenLine: spokenLine,
+                directionNote: directionNote
+            ),
             token: token
         )
 
         if job.status == "completed", let videoURL = job.videoURL {
-            return AnimatedClip(
+            return animatedClip(
+                from: job,
                 videoURL: videoURL,
-                caption: job.spokenLine,
-                motionStyle: job.motionStyle
+                fallbackStyle: motionStyle,
+                fallbackLine: spokenLine,
+                fallbackDirection: directionNote
             )
         }
 
@@ -143,10 +166,12 @@ struct GenerationService {
                 guard let videoURL = polled.videoURL else {
                     throw SceneMeAPIError.invalidResponse
                 }
-                return AnimatedClip(
+                return animatedClip(
+                    from: polled,
                     videoURL: videoURL,
-                    caption: polled.spokenLine,
-                    motionStyle: polled.motionStyle
+                    fallbackStyle: motionStyle,
+                    fallbackLine: spokenLine,
+                    fallbackDirection: directionNote
                 )
             case "failed":
                 throw SceneMeAPIError.failed(polled.error ?? "Video generation failed.")
@@ -158,6 +183,34 @@ struct GenerationService {
         }
 
         throw SceneMeAPIError.timedOut
+    }
+
+    private func animatedClip(
+        from job: SceneJobResponse,
+        videoURL: URL,
+        fallbackStyle: VideoMotionStyle,
+        fallbackLine: String,
+        fallbackDirection: String
+    ) -> AnimatedClip {
+        let style = job.motionStyle ?? fallbackStyle.rawValue
+        let line = job.spokenLine ?? fallbackLine
+        let direction = job.directionNote ?? fallbackDirection
+        let library = decodedClips(from: job)
+        let matched = library.first(where: {
+            $0.motionStyle == style
+                && ($0.spokenLine ?? "") == line
+                && ($0.directionNote ?? "") == direction
+        }) ?? library.first(where: { $0.videoURL == videoURL })
+
+        return AnimatedClip(
+            videoURL: videoURL,
+            caption: matched?.captionText ?? (line.isEmpty ? nil : line),
+            motionStyle: style,
+            spokenLine: line.isEmpty ? nil : line,
+            directionNote: direction.isEmpty ? nil : direction,
+            cacheKey: matched?.cacheKey,
+            library: library
+        )
     }
 
     /// Regenerates only the outfit: same scene, same face, same background.
@@ -213,21 +266,53 @@ struct GenerationService {
     }
 
     private func result(from job: SceneJobResponse, imageURL: URL) -> GenerationResult {
-        GenerationResult(
+        let clips = decodedClips(from: job)
+        return GenerationResult(
             id: job.jobId,
             sceneId: job.sceneId,
             sceneName: job.sceneName,
             sceneLocation: job.sceneLocation,
             imageURL: imageURL,
-            videoURL: job.videoURL,
-            videoCaption: job.spokenLine,
+            videoURL: job.videoURL ?? clips.first?.videoURL,
+            videoCaption: job.spokenLine ?? clips.first?.captionText,
+            videoClips: clips,
             timeOfDay: TimeOfDay(rawValue: job.timeOfDay) ?? .goldenHour,
             weather: WeatherOption(rawValue: job.weather) ?? .sunny,
             pose: PoseOption(rawValue: job.pose) ?? .casual,
             hasCompanion: job.hasCompanion,
             isReroll: job.isReroll,
-            createdAt: Self.parseDate(job.createdAt) ?? Date()
+            createdAt: Self.parseDate(job.createdAt ?? "") ?? Date()
         )
+    }
+
+    private func decodedClips(from job: SceneJobResponse) -> [SceneVideoClip] {
+        let payloads = job.videoClips ?? []
+        let mapped = payloads.map { payload in
+            SceneVideoClip(
+                cacheKey: payload.cacheKey,
+                motionStyle: payload.motionStyle,
+                spokenLine: payload.spokenLine,
+                directionNote: payload.directionNote,
+                videoURL: payload.videoURL,
+                createdAt: Self.parseDate(payload.createdAt ?? "") ?? Date()
+            )
+        }
+        if !mapped.isEmpty {
+            return mapped
+        }
+        if let videoURL = job.videoURL {
+            return [
+                SceneVideoClip(
+                    cacheKey: "\(job.motionStyle ?? "cinematic")|\(job.spokenLine ?? "")|\(job.directionNote ?? "")",
+                    motionStyle: job.motionStyle ?? "cinematic",
+                    spokenLine: job.spokenLine,
+                    directionNote: job.directionNote,
+                    videoURL: videoURL,
+                    createdAt: Self.parseDate(job.createdAt ?? "") ?? Date()
+                )
+            ]
+        }
+        return []
     }
 
     private static func parseDate(_ value: String) -> Date? {

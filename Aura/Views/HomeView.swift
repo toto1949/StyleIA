@@ -259,12 +259,35 @@ struct GenerationCard: View {
                 )
                 .allowsHitTesting(false)
 
-                Text(result.sceneName.uppercased())
-                    .font(.system(size: 9, weight: .heavy))
-                    .tracking(1.6)
-                    .foregroundStyle(SceneMeTheme.text)
-                    .padding(10)
-                    .allowsHitTesting(false)
+                HStack(alignment: .bottom) {
+                    Text(result.sceneName.uppercased())
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(1.6)
+                        .foregroundStyle(SceneMeTheme.text)
+
+                    Spacer(minLength: 8)
+
+                    if result.hasAnyVideo {
+                        HStack(spacing: 4) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            if result.videoClips.count > 1 {
+                                Text("\(result.videoClips.count)")
+                                    .font(.system(size: 9, weight: .heavy))
+                            }
+                        }
+                        .foregroundStyle(SceneMeTheme.gold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                        .overlay {
+                            Capsule().stroke(SceneMeTheme.gold.opacity(0.45), lineWidth: 1)
+                        }
+                    }
+                }
+                .padding(10)
+                .allowsHitTesting(false)
             }
             .frame(height: 170)
             .frame(maxWidth: .infinity)

@@ -73,7 +73,7 @@ enum SubscriptionTier: Int, Comparable, Codable {
             proValue: "✓"
         ),
         Feature(
-            title: "Watermark-free exports",
+            title: "Clean exports (no SceneMe mark)",
             freeValue: nil,
             creatorValue: "✓",
             proValue: "✓"

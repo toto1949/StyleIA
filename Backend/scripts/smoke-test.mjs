@@ -192,6 +192,18 @@ if (redirected.prompt && redirected.prompt.includes("talk-show")) {
 }
 console.log("video redirect ok");
 
+const portraitDone = await waitForJob(redirected.jobId, token);
+const afterPortrait = await api(`/v1/scene-jobs/${done1.jobId}`, {}, token);
+if (!Array.isArray(afterPortrait.videoClips) || afterPortrait.videoClips.length < 2) {
+  fail(`expected >=2 videoClips after portrait, got ${JSON.stringify(afterPortrait.videoClips)}`);
+}
+const styles = new Set(afterPortrait.videoClips.map((clip) => clip.motionStyle));
+if (!styles.has("talking") || !styles.has("portrait")) {
+  fail(`videoClips missing talking/portrait: ${JSON.stringify([...styles])}`);
+}
+if (!portraitDone.videoURL) fail("portrait video missing videoURL");
+console.log(`video library ok (${afterPortrait.videoClips.length} clips)`);
+
 // 9. History still lists image jobs with videoURL attached
 const history = await api("/v1/history?page=1&limit=10", {}, token);
 if (history.items.length < 3) fail(`expected >=3 history items, got ${history.items.length}`);

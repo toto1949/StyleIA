@@ -107,8 +107,9 @@ export const config = Object.freeze({
   mockVideoURL: process.env.STYLEAI_MOCK_VIDEO_URL
     || "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
 
-  // Talking Video Director: TTS + mux onto the PixVerse clip (fal.ai).
+  // Talking Video Director: TTS → lip-sync (preferred) or ffmpeg mux fallback.
   falTtsModel: process.env.FAL_TTS_MODEL || "fal-ai/elevenlabs/tts/turbo-v2.5",
+  falLipsyncModel: process.env.FAL_LIPSYNC_MODEL || "fal-ai/sync-lipsync/v3",
   falMergeAudioVideoModel: process.env.FAL_MERGE_AUDIO_VIDEO_MODEL
     || "fal-ai/ffmpeg-api/merge-audio-video",
   ttsVoiceFemale: process.env.STYLEAI_TTS_VOICE_FEMALE || "Rachel",

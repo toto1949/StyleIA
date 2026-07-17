@@ -118,17 +118,31 @@ struct ResultView: View {
                 sceneLocation: result.sceneLocation,
                 sceneCategory: viewModel.request?.scene.category
                     ?? viewModel.scenes.first(where: { $0.id == result.sceneId })?.category,
-                hasExistingVideo: result.videoURL != nil,
-                onGenerate: { style, line in
-                    viewModel.animateScene(motionStyle: style, spokenLine: line)
+                existingClips: viewModel.currentResult?.videoClips ?? result.videoClips,
+                onGenerate: { style, line, direction in
+                    viewModel.animateScene(
+                        motionStyle: style,
+                        spokenLine: line,
+                        directionNote: direction
+                    )
                 },
-                onPlayExisting: {
-                    viewModel.presentVideoPlayer = true
+                onPlayClip: { clip in
+                    viewModel.playVideoClip(clip)
                 }
             )
         }
         .fullScreenCover(isPresented: $viewModel.presentVideoPlayer) {
-            if let videoURL = viewModel.currentResult?.videoURL {
+            let clip = viewModel.playingVideoClip
+                ?? viewModel.currentResult?.videoClips.first
+            if let clip {
+                SceneVideoPlayerView(
+                    videoURL: clip.videoURL,
+                    sceneName: result.sceneName,
+                    caption: clip.captionText
+                ) { url in
+                    viewModel.saveVideoToPhotoLibrary(url)
+                }
+            } else if let videoURL = viewModel.currentResult?.videoURL {
                 SceneVideoPlayerView(
                     videoURL: videoURL,
                     sceneName: result.sceneName,
@@ -191,17 +205,55 @@ struct ResultView: View {
                 }
             }
             .overlay {
-                if viewModel.isRerolling || viewModel.isAnimating {
+                // Always-on editorial signature — reads in screenshots & screen recordings.
+                SceneMeSignatureOverlay(
+                    corner: showFullImage ? .bottomTrailing : .topLeading,
+                    compact: true
+                )
+                .padding(.top, showFullImage ? 0 : 56)
+                .padding(.bottom, showFullImage ? 36 : 0)
+            }
+            .overlay {
+                if viewModel.isRerolling {
                     ZStack {
                         Color.black.opacity(0.55)
                         VStack(spacing: 12) {
                             ProgressView()
                                 .tint(SceneMeTheme.gold)
-                            Text(viewModel.isAnimating ? "Bringing your scene to life…" : "Re-rolling outfit…")
+                            Text("Re-rolling outfit…")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(SceneMeTheme.text)
                         }
                     }
+                } else if viewModel.isAnimating {
+                    // Non-blocking: user can leave for Profile/settings while the clip finishes.
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .tint(SceneMeTheme.gold)
+                                .scaleEffect(0.85)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Animating in the background…")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(SceneMeTheme.text)
+                                Text("Feel free to browse — we’ll notify you when it’s ready.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(SceneMeTheme.subtleText)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(14)
+                        .background(SceneMeTheme.panel.opacity(0.96))
+                        .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous)
+                                .stroke(SceneMeTheme.gold.opacity(0.35), lineWidth: 1)
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 110)
+                    }
+                    .allowsHitTesting(false)
                 }
             }
         }
@@ -383,9 +435,11 @@ struct ResultView: View {
             Spacer()
 
             actionButton(
-                systemImage: result.videoURL == nil ? "play.circle" : "play.circle.fill",
-                title: viewModel.isAnimating ? "Animating…" : "Animate",
-                isHighlighted: result.videoURL != nil,
+                systemImage: result.hasAnyVideo ? "play.circle.fill" : "play.circle",
+                title: viewModel.isAnimating
+                    ? "Animating…"
+                    : (result.videoClips.count > 1 ? "Clips" : "Animate"),
+                isHighlighted: result.hasAnyVideo,
                 isLocked: !viewModel.currentTier.canAnimateToVideo
             ) {
                 guard !viewModel.isAnimating else { return }

@@ -164,7 +164,7 @@ export async function generateSceneVideo({
   }
 }
 
-/// For Talking clips with a spoken line: TTS → merge audio onto the silent video.
+/// For Talking clips with a spoken line: TTS → lip-sync (preferred) or mux fallback.
 /// Failures are logged and the silent video is returned so animate still succeeds.
 async function maybeAttachTalkingAudio({
   videoURL,
@@ -180,12 +180,19 @@ async function maybeAttachTalkingAudio({
   }
 
   try {
-    onProgress?.(82);
+    onProgress?.(80);
     const audioURL = await synthesizeSpeech({ text: line, subjectGender, jobId });
-    onProgress?.(90);
-    const mergedURL = await mergeAudioOntoVideo({ videoURL, audioURL, jobId });
-    onProgress?.(95);
-    return mergedURL || videoURL;
+    onProgress?.(88);
+    try {
+      const syncedURL = await lipsyncVideoToAudio({ videoURL, audioURL, jobId });
+      onProgress?.(95);
+      return syncedURL || videoURL;
+    } catch (lipsyncError) {
+      logFal("lipsync_failed_falling_back_to_mux", { jobId, ...serializeFalError(lipsyncError) });
+      const mergedURL = await mergeAudioOntoVideo({ videoURL, audioURL, jobId });
+      onProgress?.(95);
+      return mergedURL || videoURL;
+    }
   } catch (error) {
     logFal("talking_audio_failed", { jobId, ...serializeFalError(error) });
     return videoURL;
@@ -194,12 +201,27 @@ async function maybeAttachTalkingAudio({
 
 async function synthesizeSpeech({ text, subjectGender, jobId }) {
   const voice = voiceForGender(subjectGender);
-  logFal("tts_start", { jobId, model: config.falTtsModel, voice, chars: text.length });
+  const gender = String(subjectGender || "").trim().toLowerCase();
+  // Conversational interview tone — slightly lower stability = more natural inflection.
+  const tone = gender === "male"
+    ? { stability: 0.35, similarity_boost: 0.8, style: 0.3 }
+    : gender === "female"
+      ? { stability: 0.4, similarity_boost: 0.78, style: 0.35 }
+      : { stability: 0.4, similarity_boost: 0.75, style: 0.3 };
+
+  logFal("tts_start", {
+    jobId,
+    model: config.falTtsModel,
+    voice,
+    subjectGender: gender || "auto",
+    chars: text.length
+  });
 
   const result = await fal.subscribe(config.falTtsModel, {
     input: {
       text,
-      voice
+      voice,
+      ...tone
     },
     logs: true
   });
@@ -209,8 +231,34 @@ async function synthesizeSpeech({ text, subjectGender, jobId }) {
     throw new Error("fal.ai TTS result did not include an audio URL.");
   }
 
-  logFal("tts_complete", { jobId, audioHost: safeHost(audioURL) });
+  logFal("tts_complete", { jobId, audioHost: safeHost(audioURL), voice });
   return audioURL;
+}
+
+async function lipsyncVideoToAudio({ videoURL, audioURL, jobId }) {
+  logFal("lipsync_start", {
+    jobId,
+    model: config.falLipsyncModel,
+    videoHost: safeHost(videoURL),
+    audioHost: safeHost(audioURL)
+  });
+
+  const result = await fal.subscribe(config.falLipsyncModel, {
+    input: {
+      video_url: videoURL,
+      audio_url: audioURL,
+      sync_mode: "cut_off"
+    },
+    logs: true
+  });
+
+  const syncedURL = extractVideoURL(result?.data ?? result);
+  if (!syncedURL) {
+    throw new Error("fal.ai lipsync did not include a video URL.");
+  }
+
+  logFal("lipsync_complete", { jobId, videoHost: safeHost(syncedURL) });
+  return syncedURL;
 }
 
 async function mergeAudioOntoVideo({ videoURL, audioURL, jobId }) {

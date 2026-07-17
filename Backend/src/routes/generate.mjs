@@ -19,6 +19,7 @@ import {
   normalizeSubjectGender,
   normalizeTimeOfDay,
   normalizeWeather,
+  sanitizeDirectionNote,
   sanitizeSpokenLine,
   videoCacheKey
 } from "../services/prompt-builder.mjs";
@@ -66,14 +67,15 @@ export async function rerollSceneJob(request, response, sourceJobId) {
 }
 
 /// Animates a completed scene image into a short video clip.
-/// Body (optional): { motionStyle, spokenLine }
+/// Body (optional): { motionStyle, spokenLine, directionNote }
 /// Cache reuses only when the same director settings were used before.
 export async function createVideoJob(request, response, sourceJobId) {
   const auth = authenticateRequest(request);
   const body = await readJSON(request).catch(() => ({}));
   const motionStyle = normalizeMotionStyle(body.motionStyle);
   const spokenLine = sanitizeSpokenLine(body.spokenLine);
-  const cacheKey = videoCacheKey(motionStyle, spokenLine);
+  const directionNote = sanitizeDirectionNote(body.directionNote);
+  const cacheKey = videoCacheKey(motionStyle, spokenLine, directionNote);
 
   const data = await store.snapshot();
   const source = data.jobs.find(
@@ -87,9 +89,9 @@ export async function createVideoJob(request, response, sourceJobId) {
     throw new HttpError(409, "Scene must finish generating before it can be animated.");
   }
 
-  // Reuse only when director settings match the cached clip.
-  const cachedKey = source.videoCacheKey || videoCacheKey("cinematic", "");
-  if (source.videoURL && cachedKey === cacheKey) {
+  // Prefer a matching clip from the library; fall back to the legacy single slot.
+  const cachedClip = findCachedVideoClip(source, cacheKey);
+  if (cachedClip?.videoURL) {
     const cached = {
       ...source,
       jobId: crypto.randomUUID(),
@@ -97,10 +99,12 @@ export async function createVideoJob(request, response, sourceJobId) {
       sourceJobId,
       status: "completed",
       progress: 100,
-      videoURL: source.videoURL,
-      motionStyle: source.videoMotionStyle || "cinematic",
-      spokenLine: source.videoSpokenLine || "",
-      videoCacheKey: cachedKey
+      videoURL: cachedClip.videoURL,
+      motionStyle: cachedClip.motionStyle || "cinematic",
+      spokenLine: cachedClip.spokenLine || "",
+      directionNote: cachedClip.directionNote || "",
+      videoCacheKey: cachedClip.cacheKey || cacheKey,
+      videoClips: normalizeVideoClips(source)
     };
     sendJSON(response, 200, sceneJobResponse(cached));
     return;
@@ -112,7 +116,8 @@ export async function createVideoJob(request, response, sourceJobId) {
     weather: source.weather,
     pose: source.pose,
     motionStyle,
-    spokenLine
+    spokenLine,
+    directionNote
   });
 
   const job = await store.mutate(async (current) => {
@@ -131,6 +136,7 @@ export async function createVideoJob(request, response, sourceJobId) {
       subjectGender: source.subjectGender || "auto",
       motionStyle,
       spokenLine,
+      directionNote,
       videoCacheKey: cacheKey,
       prompt: videoPrompt,
       sourceImageURL: source.imageURL,
@@ -152,7 +158,8 @@ export async function createVideoJob(request, response, sourceJobId) {
     sourceJobId,
     sceneId: job.sceneId,
     motionStyle,
-    hasSpokenLine: Boolean(spokenLine)
+    hasSpokenLine: Boolean(spokenLine),
+    hasDirectionNote: Boolean(directionNote)
   });
   startVideoGeneration(job.jobId);
   sendJSON(response, 200, sceneJobResponse(job));
@@ -419,15 +426,24 @@ async function runVideoGeneration(jobId) {
 
     await transitionJob(jobId, { status: "completed", progress: 100, videoURL, error: "" });
 
-    // Persist the video + director settings onto the source scene job so
-    // matching re-animates reuse the clip (and history can show the caption).
+    // Upsert into the source scene's clip library so Talking + Cinematic + …
+    // can all be replayed later without losing prior directions.
     await store.mutate(async (data) => {
       const source = data.jobs.find((candidate) => candidate.jobId === job.sourceJobId);
       if (source) {
+        const clip = {
+          cacheKey: job.videoCacheKey || videoCacheKey(job.motionStyle, job.spokenLine, job.directionNote),
+          motionStyle: job.motionStyle || "cinematic",
+          spokenLine: job.spokenLine || "",
+          directionNote: job.directionNote || "",
+          videoURL,
+          createdAt: new Date().toISOString()
+        };
+        source.videoClips = upsertVideoClip(normalizeVideoClips(source), clip);
         source.videoURL = videoURL;
-        source.videoMotionStyle = job.motionStyle || "cinematic";
-        source.videoSpokenLine = job.spokenLine || "";
-        source.videoCacheKey = job.videoCacheKey || videoCacheKey(job.motionStyle, job.spokenLine);
+        source.videoMotionStyle = clip.motionStyle;
+        source.videoSpokenLine = clip.spokenLine;
+        source.videoCacheKey = clip.cacheKey;
         source.updatedAt = new Date().toISOString();
       }
     });
@@ -522,6 +538,7 @@ function sceneJobResponse(job) {
     progress: job.progress,
     imageURL: job.imageURL || null,
     videoURL: job.videoURL || null,
+    videoClips: normalizeVideoClips(job),
     sourceJobId: job.sourceJobId || null,
     sceneId: job.sceneId,
     sceneName: job.sceneName || "",
@@ -534,11 +551,48 @@ function sceneJobResponse(job) {
     isReroll: Boolean(job.isReroll),
     motionStyle: job.motionStyle || job.videoMotionStyle || null,
     spokenLine: job.spokenLine || job.videoSpokenLine || null,
+    directionNote: job.directionNote || null,
     prompt: job.prompt,
     originalPhotoURL: job.originalPhotoURL || null,
     createdAt: job.createdAt,
     error: job.error || null
   };
+}
+
+const MAX_VIDEO_CLIPS = 4;
+
+function normalizeVideoClips(job) {
+  const clips = Array.isArray(job?.videoClips)
+    ? job.videoClips.filter((clip) => clip?.videoURL && clip?.cacheKey)
+    : [];
+
+  if (clips.length > 0) {
+    return clips.slice(0, MAX_VIDEO_CLIPS);
+  }
+
+  // Legacy single-slot scenes: surface as a one-item library.
+  if (job?.videoURL) {
+    return [{
+      cacheKey: job.videoCacheKey || videoCacheKey(job.videoMotionStyle || "cinematic", job.videoSpokenLine || "", job.directionNote || ""),
+      motionStyle: job.videoMotionStyle || job.motionStyle || "cinematic",
+      spokenLine: job.videoSpokenLine || job.spokenLine || "",
+      directionNote: job.directionNote || "",
+      videoURL: job.videoURL,
+      createdAt: job.updatedAt || job.createdAt || new Date().toISOString()
+    }];
+  }
+
+  return [];
+}
+
+function findCachedVideoClip(source, cacheKey) {
+  return normalizeVideoClips(source).find((clip) => clip.cacheKey === cacheKey) || null;
+}
+
+function upsertVideoClip(clips, clip) {
+  const next = clips.filter((candidate) => candidate.cacheKey !== clip.cacheKey);
+  next.unshift(clip);
+  return next.slice(0, MAX_VIDEO_CLIPS);
 }
 
 function logScene(event, details = {}) {

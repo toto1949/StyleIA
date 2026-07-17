@@ -220,16 +220,20 @@ export const allowedMotionStyles = ["cinematic", "talking", "portrait", "energy"
 ///   talking   — interview / talk-show speaking performance (+ optional caption line)
 ///   portrait  — near-still beauty/portrait breathing shot
 ///   energy    — ambient-heavy scene life (weather, crowd, lights)
+///
+/// directionNote — optional free-text direction from the user (appended carefully).
 export function buildVideoPrompt({
   scene,
   timeOfDay,
   weather,
   pose,
   motionStyle = "cinematic",
-  spokenLine = ""
+  spokenLine = "",
+  directionNote = ""
 }) {
   const style = normalizeMotionStyle(motionStyle);
   const line = sanitizeSpokenLine(spokenLine);
+  const direction = sanitizeDirectionNote(directionNote);
 
   const ambientMotion = {
     sunny: "sunlight shimmers softly and a gentle breeze moves hair and fabric",
@@ -247,12 +251,15 @@ export function buildVideoPrompt({
   const ambient = ambientMotion[weather] || ambientMotion.sunny;
   const time = timeMotion[timeOfDay] || timeMotion.golden_hour;
   const identity =
-    "The person's face, identity, hairstyle, body and outfit remain perfectly consistent with the input image in every single frame, sharp, stable and photorealistic.";
+    "Critically important face lock: keep the exact same face geometry, skin texture, pores, eye shape, brows, nose, mouth, jawline, cheekbones, hairline and identity from the input photo in every frame — sharp, stable, photorealistic, no beautify morph, no identity drift.";
+  const directionSentence = direction
+    ? `User direction for the performance (follow without changing the face or outfit): ${direction}.`
+    : "";
 
   if (style === "talking") {
     const speech = line
-      ? `They are mid-conversation, speaking these words with natural lip motion and expressive but subtle facial acting: "${line}".`
-      : "They are mid-conversation, speaking with natural lip motion, soft jaw movement and expressive but subtle facial acting, as if answering a question on a talk show or interview.";
+      ? `They speak the exact line "${line}" at a natural conversational pace. Mouth shapes, lip closure, jaw and tongue timing must match the spoken words clearly — true lip-sync friendly articulation, not random mouth wobble.`
+      : "They speak naturally mid-conversation with clear lip shapes, soft jaw movement and subtle facial acting, as if answering a talk-show question.";
 
     const caption = line
       ? `Burn a clean, readable lower-third caption across the bottom of the frame with the exact text: "${line}". White sans-serif letters with a soft dark shadow or bar for contrast, television-interview style, stable and sharp for the whole clip.`
@@ -262,31 +269,34 @@ export function buildVideoPrompt({
       `A living talk-show / interview moment ${scene.base_prompt}.`,
       speech,
       "Natural micro-gestures: a slight head nod, soft hand motion near the torso, confident eye contact toward camera or an off-camera host.",
+      directionSentence,
       `Around them, ${ambient}, with ${time}.`,
       "Camera work: locked-off or very slow subtle push-in, broadcast-interview framing, no whip pans, no cuts.",
       caption,
       identity
-    ].join(" ");
+    ].filter(Boolean).join(" ");
   }
 
   if (style === "portrait") {
     return [
       `An intimate living portrait ${scene.base_prompt}.`,
       "The person stays nearly still, breathing softly, with a tiny natural blink and a gentle, almost imperceptible smile.",
+      directionSentence,
       `Hair and fabric move only slightly. Around them, ${ambient}, with ${time}.`,
       "Camera work: extremely slow, elegant push-in, shallow depth of field, beauty-editorial stillness.",
       identity
-    ].join(" ");
+    ].filter(Boolean).join(" ");
   }
 
   if (style === "energy") {
     return [
       `A high-atmosphere living scene ${scene.base_prompt}.`,
       "The person holds a confident presence with restrained body motion while the world around them feels alive.",
+      directionSentence,
       `Around them, ${ambient}, with ${time}, plus richer environmental life — distant figures, light flicker, air and atmosphere moving with realistic physics.`,
       "Camera work: smooth cinematic drift or gentle orbiting push, stabilized, no cuts.",
       identity
-    ].join(" ");
+    ].filter(Boolean).join(" ");
   }
 
   // cinematic (default)
@@ -299,11 +309,12 @@ export function buildVideoPrompt({
   return [
     `A cinematic living moment ${scene.base_prompt}.`,
     subjectMotion,
+    directionSentence,
     `Around them, ${ambient}, with ${time}.`,
     "The background breathes with subtle life — distant figures, light and atmosphere shifting naturally, realistic physics.",
     "Camera work: one slow, smooth stabilized push-in toward the subject, no cuts, no whip pans, shallow cinematic depth of field.",
     identity
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 }
 
 export function normalizeMotionStyle(value) {
@@ -320,8 +331,21 @@ export function sanitizeSpokenLine(value) {
     .slice(0, 120);
 }
 
-export function videoCacheKey(motionStyle, spokenLine) {
-  return `${normalizeMotionStyle(motionStyle)}|${sanitizeSpokenLine(spokenLine)}`;
+export function sanitizeDirectionNote(value) {
+  return String(value || "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s.,'!?&:;/-]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+export function videoCacheKey(motionStyle, spokenLine, directionNote = "") {
+  return [
+    normalizeMotionStyle(motionStyle),
+    sanitizeSpokenLine(spokenLine),
+    sanitizeDirectionNote(directionNote)
+  ].join("|");
 }
 
 export function normalizeCompanionKind(value) {
@@ -354,7 +378,7 @@ function subjectNoun(gender) {
 
 function identityLead(_gender, noun) {
   // Same face-lock language for every subject — only the noun differs (man/woman/person).
-  return `This is a face-preserving edit of a real ${noun} from the input photo. Critically important: keep the person's face 100% identical to the input photo — the exact same ${noun}, instantly recognizable as this specific individual.`;
+  return `This is a face-preserving edit of a real ${noun} from the input photo. Critically important: keep the person's face 100% identical to the input photo — the exact same ${noun}, instantly recognizable as this specific individual. Render the face sharp and photorealistic with natural skin texture and pores — no plastic smooth skin, no beautify morph, no identity drift.`;
 }
 
 function identityDetails(gender) {

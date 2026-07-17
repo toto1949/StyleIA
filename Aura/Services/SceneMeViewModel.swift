@@ -71,6 +71,8 @@ final class SceneMeViewModel: ObservableObject {
     @Published var isRerolling = false
     @Published var isAnimating = false
     @Published var presentVideoPlayer = false
+    /// Which directed clip is open in the fullscreen player.
+    @Published var playingVideoClip: SceneVideoClip?
     @Published var generationProgress = 0
     @Published var generatingSceneName = ""
     @Published var notice: String?
@@ -290,6 +292,7 @@ final class SceneMeViewModel: ObservableObject {
         resultImage = nil
         currentJobId = nil
         presentVideoPlayer = false
+        playingVideoClip = nil
         generatingSceneName = ""
         generationProgress = 0
         flow = .home
@@ -319,11 +322,15 @@ final class SceneMeViewModel: ObservableObject {
         }
         for item in remote {
             if var existing = byId[item.id] {
-                if item.videoURL != nil {
+                if !item.videoClips.isEmpty {
+                    existing.videoClips = Self.mergeClips(local: existing.videoClips, remote: item.videoClips)
+                    existing.videoURL = existing.videoClips.first?.videoURL ?? item.videoURL ?? existing.videoURL
+                    existing.videoCaption = existing.videoClips.first?.captionText ?? item.videoCaption ?? existing.videoCaption
+                } else if item.videoURL != nil {
                     existing.videoURL = item.videoURL
-                }
-                if let caption = item.videoCaption, !caption.isEmpty {
-                    existing.videoCaption = caption
+                    if let caption = item.videoCaption, !caption.isEmpty {
+                        existing.videoCaption = caption
+                    }
                 }
                 byId[item.id] = existing
             } else {
@@ -331,6 +338,17 @@ final class SceneMeViewModel: ObservableObject {
             }
         }
         return byId.values.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private static func mergeClips(local: [SceneVideoClip], remote: [SceneVideoClip]) -> [SceneVideoClip] {
+        var byKey: [String: SceneVideoClip] = [:]
+        for clip in local {
+            byKey[clip.cacheKey] = clip
+        }
+        for clip in remote {
+            byKey[clip.cacheKey] = clip
+        }
+        return byKey.values.sorted { $0.createdAt > $1.createdAt }
     }
 
     var favoriteResults: [GenerationResult] {
@@ -477,37 +495,71 @@ final class SceneMeViewModel: ObservableObject {
     }
 
     /// Animates the current result with Video Director settings.
-    /// Matching style + caption reuses the cached clip; a new direction regenerates.
-    func animateScene(motionStyle: VideoMotionStyle, spokenLine: String) {
+    /// Matching style + caption + direction reuses the cached clip; a new direction regenerates
+    /// and is stored alongside prior clips so all can be replayed.
+    func animateScene(motionStyle: VideoMotionStyle, spokenLine: String, directionNote: String = "") {
         if requireTier(.pro, feature: "Video Director") { return }
         guard let result = currentResult else { return }
         guard let api, let jobId = currentJobId else { return }
 
         isAnimating = true
         let ownerUserId = session?.userId
+        let direction = directionNote.trimmingCharacters(in: .whitespacesAndNewlines)
         animationTask?.cancel()
         animationTask = Task {
+            await SceneMeNotifications.requestPermissionIfNeeded()
             do {
                 let token = try await token(using: api)
                 let clip = try await GenerationService(api: api).animate(
                     jobId: jobId,
                     motionStyle: motionStyle,
                     spokenLine: spokenLine,
+                    directionNote: direction,
                     token: token
                 ) { _ in }
 
                 try Task.checkCancellation()
                 guard session?.userId == ownerUserId else { return }
 
+                let caption = clip.caption?.isEmpty == false ? clip.caption : (spokenLine.isEmpty ? nil : spokenLine)
+                let saved = SceneVideoClip(
+                    cacheKey: clip.cacheKey
+                        ?? "\(motionStyle.rawValue)|\(spokenLine)|\(direction)",
+                    motionStyle: clip.motionStyle ?? motionStyle.rawValue,
+                    spokenLine: caption,
+                    directionNote: clip.directionNote ?? (direction.isEmpty ? nil : direction),
+                    videoURL: clip.videoURL,
+                    createdAt: Date()
+                )
+
                 var updated = result
-                updated.videoURL = clip.videoURL
-                updated.videoCaption = clip.caption?.isEmpty == false ? clip.caption : (spokenLine.isEmpty ? nil : spokenLine)
+                if !clip.library.isEmpty {
+                    updated.videoClips = Self.mergeClips(local: updated.videoClips, remote: clip.library)
+                }
+                updated.upsert(clip: saved)
                 currentResult = updated
+                playingVideoClip = saved
                 if let index = history.firstIndex(where: { $0.id == updated.id }) {
                     history[index] = updated
                     persistence.saveHistory(history)
                 }
-                presentVideoPlayer = true
+                notice = "Your \(motionStyle.title.lowercased()) clip is ready."
+                // Stay on Result → open the player. Left for Profile/settings →
+                // notify so they can come back without being interrupted mid-tap.
+                if flow == .result {
+                    presentVideoPlayer = true
+                    SceneMeNotifications.notifyClipReady(
+                        sceneName: result.sceneName,
+                        styleTitle: motionStyle.title,
+                        force: false
+                    )
+                } else {
+                    SceneMeNotifications.notifyClipReady(
+                        sceneName: result.sceneName,
+                        styleTitle: motionStyle.title,
+                        force: true
+                    )
+                }
             } catch is CancellationError {
                 // User left the screen; nothing to surface.
             } catch SceneMeAPIError.unauthorized {
@@ -521,6 +573,12 @@ final class SceneMeViewModel: ObservableObject {
                 isAnimating = false
             }
         }
+    }
+
+    /// Plays a previously directed clip from the scene's clip library.
+    func playVideoClip(_ clip: SceneVideoClip) {
+        playingVideoClip = clip
+        presentVideoPlayer = true
     }
 
     func cancelGeneration() {
@@ -707,12 +765,17 @@ final class SceneMeViewModel: ObservableObject {
                     .appendingPathComponent("sceneme-\(UUID().uuidString).mp4")
                 try data.write(to: temporaryURL)
 
-                guard UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(temporaryURL.path) else {
+                let exportURL = try await SceneMeVideoWatermark.prepareForExport(
+                    sourceURL: temporaryURL,
+                    apply: !currentTier.removesWatermark
+                )
+
+                guard UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(exportURL.path) else {
                     notice = "This video format can't be saved to your library."
                     return
                 }
 
-                UISaveVideoAtPathToSavedPhotosAlbum(temporaryURL.path, nil, nil, nil)
+                UISaveVideoAtPathToSavedPhotosAlbum(exportURL.path, nil, nil, nil)
                 notice = "Video saved to your photo library."
             } catch {
                 notice = "Could not download the video. Please try again."

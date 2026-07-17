@@ -84,3 +84,14 @@ enum VideoTalkSuggestions {
         ]
     }
 }
+
+/// Free-text / chip suggestions for how the clip should move.
+enum VideoDirectionSuggestions {
+    static let chips: [String] = [
+        "Slow confident walk toward camera",
+        "Look off-camera then turn back and smile",
+        "Soft laugh and a small head tilt",
+        "Hold a powerful pose with wind in hair",
+        "Wave casually like greeting a friend"
+    ]
+}
