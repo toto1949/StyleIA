@@ -3,21 +3,26 @@ import { config } from "../config.mjs";
 /// Public Privacy Policy and Terms pages required for App Store / IAP review.
 /// Hosted on the API origin so paywall links resolve without a separate marketing site.
 
-export function servePrivacyPolicy(_request, response) {
-  sendHTML(response, privacyHTML());
+export function servePrivacyPolicy(request, response) {
+  sendHTML(request, response, privacyHTML());
 }
 
-export function serveTermsOfUse(_request, response) {
-  sendHTML(response, termsHTML());
+export function serveTermsOfUse(request, response) {
+  sendHTML(request, response, termsHTML());
 }
 
-function sendHTML(response, html) {
+function sendHTML(request, response, html) {
   const body = Buffer.from(html, "utf8");
   response.writeHead(200, {
     "Content-Type": "text/html; charset=utf-8",
     "Content-Length": body.length,
     "Cache-Control": "public, max-age=300"
   });
+  // App Store / link checkers often probe with HEAD; return headers only.
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
   response.end(body);
 }
 

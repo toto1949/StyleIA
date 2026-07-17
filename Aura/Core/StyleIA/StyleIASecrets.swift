@@ -29,6 +29,31 @@ enum Secrets {
         #endif
     }
 
+    /// Public origin that hosts `/privacy` and `/terms` (API base without the `/v1` suffix).
+    static var publicBaseURL: URL {
+        if let api = backendAPIBaseURL {
+            var absolute = api.absoluteString
+            while absolute.hasSuffix("/") {
+                absolute.removeLast()
+            }
+            if absolute.hasSuffix("/v1") {
+                absolute.removeLast(3)
+            }
+            if let origin = URL(string: absolute) {
+                return origin
+            }
+        }
+        return URL(string: "https://styleia.onrender.com")!
+    }
+
+    static var privacyPolicyURL: URL {
+        publicBaseURL.appendingPathComponent("privacy")
+    }
+
+    static var termsOfUseURL: URL {
+        publicBaseURL.appendingPathComponent("terms")
+    }
+
     /// Google OAuth iOS client ID from Info.plist (`GIDClientID`).
     static var googleClientID: String? {
         if let env = ProcessInfo.processInfo.environment["SCENEME_GOOGLE_CLIENT_ID"]?.trimmingCharacters(in: .whitespacesAndNewlines),

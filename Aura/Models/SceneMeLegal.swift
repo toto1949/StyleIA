@@ -2,9 +2,10 @@ import Foundation
 import SwiftUI
 
 /// Canonical legal URLs for App Store, paywall, Profile, and auth.
+/// Derived from the configured API origin so debug/local builds stay correct.
 enum SceneMeLegal {
-    static let privacyURL = URL(string: "https://styleia.onrender.com/privacy")!
-    static let termsURL = URL(string: "https://styleia.onrender.com/terms")!
+    static var privacyURL: URL { Secrets.privacyPolicyURL }
+    static var termsURL: URL { Secrets.termsOfUseURL }
 
     /// Compact "Privacy Policy  ·  Terms of Use" footer used on auth / paywall.
     struct InlineLinks: View {

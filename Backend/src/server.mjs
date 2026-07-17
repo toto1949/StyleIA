@@ -91,12 +91,18 @@ async function route(request, response) {
     return;
   }
 
-  if (request.method === "GET" && (pathname === "/privacy" || pathname === "/privacy/")) {
+  if (
+    (request.method === "GET" || request.method === "HEAD")
+    && (pathname === "/privacy" || pathname === "/privacy/")
+  ) {
     servePrivacyPolicy(request, response);
     return;
   }
 
-  if (request.method === "GET" && (pathname === "/terms" || pathname === "/terms/")) {
+  if (
+    (request.method === "GET" || request.method === "HEAD")
+    && (pathname === "/terms" || pathname === "/terms/")
+  ) {
     serveTermsOfUse(request, response);
     return;
   }
