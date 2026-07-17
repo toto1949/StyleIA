@@ -97,6 +97,14 @@ struct AuthView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(SceneMeTheme.faintText)
                     .multilineTextAlignment(.center)
+
+                HStack(spacing: 18) {
+                    Link("Privacy Policy", destination: Secrets.privacyPolicyURL)
+                    Link("Terms of Use", destination: Secrets.termsOfUseURL)
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(SceneMeTheme.subtleText)
+                .padding(.top, 4)
             }
             .padding(.horizontal, 26)
             .padding(.bottom, 40)

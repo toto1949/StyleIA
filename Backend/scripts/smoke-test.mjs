@@ -212,6 +212,10 @@ if (!privacyHTML.includes("Privacy Policy") || !privacyHTML.includes("SceneMe"))
 if (!termsHTML.includes("Terms of Use") || !termsHTML.includes("Subscriptions")) {
   fail("terms page missing expected content");
 }
+const privacyHead = await fetch(`${base}/privacy`, { method: "HEAD" });
+const termsHead = await fetch(`${base}/terms`, { method: "HEAD" });
+if (!privacyHead.ok) fail(`privacy HEAD -> ${privacyHead.status}`);
+if (!termsHead.ok) fail(`terms HEAD -> ${termsHead.status}`);
 console.log("legal pages ok");
 
 console.log("ALL SMOKE TESTS PASSED");
