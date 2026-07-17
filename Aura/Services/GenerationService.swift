@@ -26,6 +26,11 @@ struct SceneJobResponse: Decodable {
 struct GenerationService {
     let api: APIService
 
+    private struct HistoryPayload: Decodable {
+        let items: [SceneJobResponse]
+        let total: Int
+    }
+
     private struct CustomScenePayload: Encodable {
         let name: String
         let basePrompt: String
@@ -43,6 +48,22 @@ struct GenerationService {
         let weather: String
         let pose: String
         let seed: Int
+    }
+
+    /// Server-side history for the signed-in user only (`auth.sub`).
+    func fetchHistory(token: String, page: Int = 1, limit: Int = 50) async throws -> [GenerationResult] {
+        let payload: HistoryPayload = try await api.get(
+            "history",
+            query: [
+                URLQueryItem(name: "page", value: String(page)),
+                URLQueryItem(name: "limit", value: String(limit))
+            ],
+            token: token
+        )
+        return payload.items.compactMap { job in
+            guard let imageURL = job.imageURL, job.status == "completed" else { return nil }
+            return result(from: job, imageURL: imageURL)
+        }
     }
 
     func generate(

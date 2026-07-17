@@ -184,4 +184,13 @@ struct MonthlyUsageCounter {
         }
         return count >= limit
     }
+
+    /// Removes every monthly usage key for this account (used on account delete).
+    static func wipeAll(for userId: String) {
+        let prefix = "sceneme.usage.\(userId)."
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+            defaults.removeObject(forKey: key)
+        }
+    }
 }

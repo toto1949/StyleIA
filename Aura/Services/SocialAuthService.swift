@@ -48,6 +48,10 @@ final class SocialAuthService: NSObject {
         GIDSignIn.sharedInstance.handle(url)
     }
 
+    func signOutGoogle() {
+        GIDSignIn.sharedInstance.signOut()
+    }
+
     func signInWithApple() async throws -> AppleSignInCredential {
         try await withCheckedThrowingContinuation { continuation in
             appleContinuation = continuation

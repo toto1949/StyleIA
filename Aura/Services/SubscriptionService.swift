@@ -14,6 +14,9 @@ final class SubscriptionService: ObservableObject {
     @Published private(set) var isPurchasing = false
     @Published private(set) var isRestoring = false
 
+    /// SceneMe account currently signed in — used to tag and filter purchases.
+    private(set) var boundAccountToken: UUID?
+
     #if DEBUG
     /// Developer override so debug builds can test premium features without a
     /// StoreKit purchase. Compiled out of Release builds entirely.
@@ -37,6 +40,13 @@ final class SubscriptionService: ObservableObject {
     private init() {
         // Tasks are deferred to start() — starting StoreKit listeners in init()
         // before the run loop is ready causes an OS_dispatch_mach_msg crash.
+    }
+
+    /// Bind StoreKit entitlements to a SceneMe user so two accounts on one
+    /// Apple ID do not share Creator/Pro after new purchases.
+    func bindAccount(userId: String?) {
+        boundAccountToken = userId.flatMap(UUID.init(uuidString:))
+        Task { await refreshEntitlement() }
     }
 
     deinit {
@@ -88,7 +98,12 @@ final class SubscriptionService: ObservableObject {
         isPurchasing = true
         defer { isPurchasing = false }
 
-        let result = try await product.purchase()
+        var options: Set<Product.PurchaseOption> = []
+        if let boundAccountToken {
+            options.insert(.appAccountToken(boundAccountToken))
+        }
+
+        let result = try await product.purchase(options: options)
 
         switch result {
         case .success(let verification):
@@ -123,13 +138,14 @@ final class SubscriptionService: ObservableObject {
 
     // MARK: - Entitlement
 
-    /// Highest active tier across all product IDs.
+    /// Highest active tier for the bound SceneMe account.
     func refreshEntitlement() async {
         var highest: SubscriptionTier = .free
 
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
             guard !transaction.isUpgraded else { continue }
+            guard belongsToBoundAccount(transaction) else { continue }
 
             if let id = SceneMeProductID(rawValue: transaction.productID) {
                 if id.tier > highest {
@@ -139,6 +155,14 @@ final class SubscriptionService: ObservableObject {
         }
 
         entitledTier = highest
+    }
+
+    /// Tagged purchases must match the signed-in SceneMe user.
+    /// Untagged (legacy) purchases still apply so existing subscribers are not locked out.
+    private func belongsToBoundAccount(_ transaction: Transaction) -> Bool {
+        guard let boundAccountToken else { return true }
+        guard let token = transaction.appAccountToken else { return true }
+        return token == boundAccountToken
     }
 
     // MARK: - Transaction listener

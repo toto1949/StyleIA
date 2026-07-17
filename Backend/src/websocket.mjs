@@ -3,55 +3,62 @@ import { URL } from "node:url";
 
 const clientsByJobId = new Map();
 
+/// Authenticate first, then upgrade — never attach a socket to a job
+/// the caller does not own (prevents cross-user progress/result leaks).
 export function handleUpgrade(request, socket, head, authenticateSocket, onConnected) {
-  try {
-    const url = new URL(request.url, "http://localhost");
-    const match = url.pathname.match(/^\/ws\/([^/]+)$/);
-    if (!match) {
-      socket.destroy();
-      return;
-    }
-
-    const jobId = decodeURIComponent(match[1]);
-    const token = url.searchParams.get("token") || "";
-    const context = authenticateSocket(jobId, token);
-
-    const key = request.headers["sec-websocket-key"];
-    if (!key) {
-      socket.destroy();
-      return;
-    }
-
-    const accept = crypto
-      .createHash("sha1")
-      .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
-      .digest("base64");
-
-    socket.write([
-      "HTTP/1.1 101 Switching Protocols",
-      "Upgrade: websocket",
-      "Connection: Upgrade",
-      `Sec-WebSocket-Accept: ${accept}`,
-      "",
-      ""
-    ].join("\r\n"));
-
-    if (head?.length) {
-      socket.unshift(head);
-    }
-
-    addClient(jobId, socket);
-    socket.on("close", () => removeClient(jobId, socket));
-    socket.on("end", () => removeClient(jobId, socket));
-    socket.on("error", () => removeClient(jobId, socket));
-    socket.on("data", (buffer) => handleIncomingFrame(socket, buffer));
-
-    Promise.resolve(onConnected?.(jobId, context, socket)).catch(() => {
-      socket.destroy();
-    });
-  } catch {
+  const url = new URL(request.url || "", "http://localhost");
+  const match = url.pathname.match(/^\/ws\/([^/]+)$/);
+  if (!match) {
     socket.destroy();
+    return;
   }
+
+  const jobId = decodeURIComponent(match[1]);
+  const token = url.searchParams.get("token") || "";
+  const key = request.headers["sec-websocket-key"];
+  if (!key) {
+    socket.destroy();
+    return;
+  }
+
+  Promise.resolve()
+    .then(() => authenticateSocket(jobId, token))
+    .then((context) => {
+      if (!context?.userId) {
+        throw new Error("Unauthorized websocket.");
+      }
+
+      const accept = crypto
+        .createHash("sha1")
+        .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+        .digest("base64");
+
+      socket.write([
+        "HTTP/1.1 101 Switching Protocols",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        `Sec-WebSocket-Accept: ${accept}`,
+        "",
+        ""
+      ].join("\r\n"));
+
+      if (head?.length) {
+        socket.unshift(head);
+      }
+
+      addClient(jobId, socket);
+      socket.on("close", () => removeClient(jobId, socket));
+      socket.on("end", () => removeClient(jobId, socket));
+      socket.on("error", () => removeClient(jobId, socket));
+      socket.on("data", (buffer) => handleIncomingFrame(socket, buffer));
+
+      return Promise.resolve(onConnected?.(jobId, context, socket));
+    })
+    .catch(() => {
+      if (!socket.destroyed) {
+        socket.destroy();
+      }
+    });
 }
 
 export function broadcastJobUpdate(jobId, payload) {
@@ -61,9 +68,9 @@ export function broadcastJobUpdate(jobId, payload) {
   }
 
   const frame = encodeTextFrame(JSON.stringify(payload));
-  for (const socket of clients) {
-    if (!socket.destroyed) {
-      socket.write(frame);
+  for (const client of clients) {
+    if (!client.destroyed) {
+      client.write(frame);
     }
   }
 }

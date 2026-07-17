@@ -132,8 +132,20 @@ struct APIService {
         return try await decode(request)
     }
 
-    func get<ResponseBody: Decodable>(_ path: String, token: String?) async throws -> ResponseBody {
-        var request = URLRequest(url: endpoint(path))
+    func get<ResponseBody: Decodable>(
+        _ path: String,
+        query: [URLQueryItem] = [],
+        token: String?
+    ) async throws -> ResponseBody {
+        var url = endpoint(path)
+        if !query.isEmpty, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            components.queryItems = query
+            if let resolved = components.url {
+                url = resolved
+            }
+        }
+
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

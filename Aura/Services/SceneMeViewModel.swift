@@ -96,6 +96,7 @@ final class SceneMeViewModel: ObservableObject {
     private var companionS3Key: String?
     private var suggestedCrop: CGRect?
     private var generationTask: Task<Void, Never>?
+    private var animationTask: Task<Void, Never>?
     private var currentJobId: String?
 
     // MARK: - Subscription convenience
@@ -133,6 +134,8 @@ final class SceneMeViewModel: ObservableObject {
             persistence = SceneMeHistoryStore(userId: session.userId)
             usageCounter = MonthlyUsageCounter(userId: session.userId)
             profile = UserProfile(displayName: session.displayName)
+            userPhoto = persistence.loadPhoto()
+            subscriptionService.bindAccount(userId: session.userId)
         }
         history = persistence.loadHistory()
         favoriteIds = persistence.loadFavorites()
@@ -145,6 +148,10 @@ final class SceneMeViewModel: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+
+        if session != nil {
+            Task { await syncHistoryFromServer() }
+        }
     }
 
     var isAuthenticated: Bool {
@@ -193,20 +200,27 @@ final class SceneMeViewModel: ObservableObject {
     }
 
     func signOut() {
+        cancelInFlightWork()
+        SocialAuthService.shared.signOutGoogle()
         sessionStore.clear()
         session = nil
+        subscriptionService.bindAccount(userId: nil)
         clearPersonalState()
     }
 
     /// Deletes the account and all server-side data, then signs out locally.
     func deleteAccount() async {
+        cancelInFlightWork()
+        let userId = session?.userId
         guard let api, let token = session?.accessToken else {
+            wipeLocalAccountData(userId: userId)
             signOut()
             return
         }
 
         do {
             try await api.deleteAccount(token: token)
+            wipeLocalAccountData(userId: userId)
             signOut()
             notice = "Your account and all data were deleted."
         } catch {
@@ -215,6 +229,9 @@ final class SceneMeViewModel: ObservableObject {
     }
 
     private func adopt(auth: APIService.AuthResponse) {
+        cancelInFlightWork()
+        clearPersonalState()
+
         let newSession = SceneMeSession(
             userId: auth.userId,
             email: auth.email,
@@ -228,13 +245,31 @@ final class SceneMeViewModel: ObservableObject {
         persistence = SceneMeHistoryStore(userId: newSession.userId)
         history = persistence.loadHistory()
         favoriteIds = persistence.loadFavorites()
-        Task { await subscriptionService.refreshEntitlement() }
+        userPhoto = persistence.loadPhoto()
+        subscriptionService.bindAccount(userId: newSession.userId)
+        Task { await syncHistoryFromServer() }
     }
 
     /// Called when the backend rejects our token (expired session).
     private func forceSignOut() {
         signOut()
         notice = SceneMeAPIError.unauthorized.errorDescription
+    }
+
+    private func cancelInFlightWork() {
+        generationTask?.cancel()
+        generationTask = nil
+        animationTask?.cancel()
+        animationTask = nil
+        isGenerating = false
+        isRerolling = false
+        isAnimating = false
+    }
+
+    private func wipeLocalAccountData(userId: String?) {
+        guard let userId else { return }
+        SceneMeHistoryStore(userId: userId).wipeAll()
+        MonthlyUsageCounter.wipeAll(for: userId)
     }
 
     private func clearPersonalState() {
@@ -249,12 +284,53 @@ final class SceneMeViewModel: ObservableObject {
         companionItem = nil
         userPhotoS3Key = nil
         companionS3Key = nil
+        suggestedCrop = nil
         request = nil
         currentResult = nil
         resultImage = nil
         currentJobId = nil
+        presentVideoPlayer = false
+        generatingSceneName = ""
+        generationProgress = 0
         flow = .home
         tab = .home
+    }
+
+    /// Pulls this user's completed jobs from the backend and merges into local gallery.
+    private func syncHistoryFromServer() async {
+        guard let api, let userId = session?.userId else { return }
+        do {
+            let token = try await token(using: api)
+            let remote = try await GenerationService(api: api).fetchHistory(token: token)
+            guard session?.userId == userId else { return }
+
+            let merged = Self.mergeHistory(local: history, remote: remote)
+            history = merged
+            persistence.saveHistory(merged)
+        } catch {
+            // Offline / transient — keep local gallery for this user.
+        }
+    }
+
+    private static func mergeHistory(local: [GenerationResult], remote: [GenerationResult]) -> [GenerationResult] {
+        var byId: [String: GenerationResult] = [:]
+        for item in local {
+            byId[item.id] = item
+        }
+        for item in remote {
+            if var existing = byId[item.id] {
+                if item.videoURL != nil {
+                    existing.videoURL = item.videoURL
+                }
+                if let caption = item.videoCaption, !caption.isEmpty {
+                    existing.videoCaption = caption
+                }
+                byId[item.id] = existing
+            } else {
+                byId[item.id] = item
+            }
+        }
+        return byId.values.sorted { $0.createdAt > $1.createdAt }
     }
 
     var favoriteResults: [GenerationResult] {
@@ -311,6 +387,7 @@ final class SceneMeViewModel: ObservableObject {
         suggestedCrop = validation?.suggestedCropRect
         userPhotoS3Key = nil
         photoFileName = "portrait_selfie.jpg"
+        persistence.savePhoto(image)
 
         if flow == .home {
             move(to: .scenePicker)
@@ -374,6 +451,7 @@ final class SceneMeViewModel: ObservableObject {
         guard let jobId = currentJobId, let api else { return }
 
         isRerolling = true
+        let ownerUserId = session?.userId
         generationTask = Task {
             do {
                 let token = try await token(using: api)
@@ -381,15 +459,20 @@ final class SceneMeViewModel: ObservableObject {
                 let result = try await service.rerollOutfit(jobId: jobId, token: token) { [weak self] progress in
                     self?.generationProgress = progress
                 }
-                try await adopt(result: result)
+                try Task.checkCancellation()
+                try await adopt(result: result, forUserId: ownerUserId)
             } catch is CancellationError {
                 // User cancelled; nothing to surface.
             } catch SceneMeAPIError.unauthorized {
                 forceSignOut()
             } catch {
-                notice = (error as? LocalizedError)?.errorDescription ?? "Outfit reroll failed."
+                if session?.userId == ownerUserId {
+                    notice = (error as? LocalizedError)?.errorDescription ?? "Outfit reroll failed."
+                }
             }
-            isRerolling = false
+            if session?.userId == ownerUserId {
+                isRerolling = false
+            }
         }
     }
 
@@ -401,7 +484,9 @@ final class SceneMeViewModel: ObservableObject {
         guard let api, let jobId = currentJobId else { return }
 
         isAnimating = true
-        Task {
+        let ownerUserId = session?.userId
+        animationTask?.cancel()
+        animationTask = Task {
             do {
                 let token = try await token(using: api)
                 let clip = try await GenerationService(api: api).animate(
@@ -410,6 +495,9 @@ final class SceneMeViewModel: ObservableObject {
                     spokenLine: spokenLine,
                     token: token
                 ) { _ in }
+
+                try Task.checkCancellation()
+                guard session?.userId == ownerUserId else { return }
 
                 var updated = result
                 updated.videoURL = clip.videoURL
@@ -425,9 +513,13 @@ final class SceneMeViewModel: ObservableObject {
             } catch SceneMeAPIError.unauthorized {
                 forceSignOut()
             } catch {
-                notice = (error as? LocalizedError)?.errorDescription ?? "Video generation failed."
+                if session?.userId == ownerUserId {
+                    notice = (error as? LocalizedError)?.errorDescription ?? "Video generation failed."
+                }
             }
-            isAnimating = false
+            if session?.userId == ownerUserId {
+                isAnimating = false
+            }
         }
     }
 
@@ -464,6 +556,7 @@ final class SceneMeViewModel: ObservableObject {
         notice = nil
         move(to: .generating)
 
+        let ownerUserId = session?.userId
         generationTask = Task {
             do {
                 let token = try await token(using: api)
@@ -491,16 +584,22 @@ final class SceneMeViewModel: ObservableObject {
                     self?.generationProgress = progress
                 }
 
-                try await adopt(result: result)
-                usageCounter?.increment()
-                isGenerating = false
-                move(to: .result)
+                try Task.checkCancellation()
+                guard session?.userId == ownerUserId, ownerUserId != nil else { return }
+
+                try await adopt(result: result, forUserId: ownerUserId)
+                if session?.userId == ownerUserId {
+                    usageCounter?.increment()
+                    isGenerating = false
+                    move(to: .result)
+                }
             } catch is CancellationError {
                 isGenerating = false
             } catch SceneMeAPIError.unauthorized {
                 isGenerating = false
                 forceSignOut()
             } catch {
+                guard session?.userId == ownerUserId else { return }
                 isGenerating = false
                 notice = (error as? LocalizedError)?.errorDescription ?? "Scene generation failed."
                 move(to: .sceneOptions)
@@ -508,7 +607,9 @@ final class SceneMeViewModel: ObservableObject {
         }
     }
 
-    private func adopt(result: GenerationResult) async throws {
+    private func adopt(result: GenerationResult, forUserId ownerUserId: String?) async throws {
+        guard let ownerUserId, session?.userId == ownerUserId else { return }
+
         currentResult = result
         currentJobId = result.id
         resultImage = try? await downloadImage(result.imageURL)
@@ -622,7 +723,7 @@ final class SceneMeViewModel: ObservableObject {
 
 private struct SceneMeHistoryStore {
     /// Scopes the on-disk files per account, so two users on the same
-    /// device never see each other's generations.
+    /// device never see each other's generations, photo, or favorites.
     let userId: String?
 
     private var suffix: String {
@@ -641,6 +742,11 @@ private struct SceneMeHistoryStore {
         directory?.appendingPathComponent("sceneme-favorites\(suffix).json")
     }
 
+    private var photoURL: URL? {
+        guard userId != nil else { return nil }
+        return directory?.appendingPathComponent("sceneme-photo\(suffix).jpg")
+    }
+
     func loadHistory() -> [GenerationResult] {
         guard
             let historyURL,
@@ -653,7 +759,7 @@ private struct SceneMeHistoryStore {
     }
 
     func saveHistory(_ results: [GenerationResult]) {
-        guard let historyURL else { return }
+        guard let historyURL, userId != nil else { return }
         write(try? encoder().encode(results), to: historyURL)
     }
 
@@ -669,8 +775,31 @@ private struct SceneMeHistoryStore {
     }
 
     func saveFavorites(_ ids: Set<String>) {
-        guard let favoritesURL else { return }
+        guard let favoritesURL, userId != nil else { return }
         write(try? JSONEncoder().encode(ids), to: favoritesURL)
+    }
+
+    func loadPhoto() -> UIImage? {
+        guard let photoURL, let data = try? Data(contentsOf: photoURL) else {
+            return nil
+        }
+        return UIImage(data: data)
+    }
+
+    func savePhoto(_ image: UIImage?) {
+        guard let photoURL, userId != nil else { return }
+        if let image, let data = image.jpegData(compressionQuality: 0.9) {
+            write(data, to: photoURL)
+        } else {
+            try? FileManager.default.removeItem(at: photoURL)
+        }
+    }
+
+    /// Permanently removes this account's local history, favorites, and photo.
+    func wipeAll() {
+        for url in [historyURL, favoritesURL, photoURL].compactMap({ $0 }) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private func write(_ data: Data?, to url: URL) {

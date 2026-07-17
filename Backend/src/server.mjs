@@ -51,8 +51,15 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.on("upgrade", (request, socket, head) => {
-  handleUpgrade(request, socket, head, (_jobId, token) => {
+  handleUpgrade(request, socket, head, async (jobId, token) => {
     const payload = verifyToken(token, "access");
+    const data = await store.snapshot();
+    const job = data.jobs.find(
+      (candidate) => candidate.jobId === jobId && candidate.userId === payload.sub
+    );
+    if (!job) {
+      throw new Error("Job not found for user.");
+    }
     return { userId: payload.sub };
   }, (jobId, context, socket) => {
     sendInitialJobUpdate(jobId, context.userId, socket);
