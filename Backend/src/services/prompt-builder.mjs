@@ -270,18 +270,15 @@ function subjectNoun(gender) {
   return "person";
 }
 
-function identityLead(gender, noun) {
-  const gendered = gender === "female"
-    ? "This is a face-preserving edit of a real woman from the input photo."
-    : gender === "male"
-      ? "This is a face-preserving edit of a real man from the input photo."
-      : "This is a face-preserving edit of a real person from the input photo.";
-
-  return `${gendered} Critically important: keep the person's face 100% identical to the input photo — the exact same ${noun}, instantly recognizable as this specific individual.`;
+function identityLead(_gender, noun) {
+  // Same face-lock language for every subject — only the noun differs (man/woman/person).
+  return `This is a face-preserving edit of a real ${noun} from the input photo. Critically important: keep the person's face 100% identical to the input photo — the exact same ${noun}, instantly recognizable as this specific individual.`;
 }
 
 function identityDetails(gender) {
-  const shared = [
+  // Identical identity lock for male and female. Outfit stays gender-aware elsewhere;
+  // face instructions must not special-case or "enhance" women differently.
+  const parts = [
     "Preserve the exact same face geometry and proportions",
     "the same eye shape and spacing, eyebrows, nose shape, mouth and lip shape",
     "the same jawline, cheekbones, chin and hairline",
@@ -293,15 +290,10 @@ function identityDetails(gender) {
   ];
 
   if (gender === "male") {
-    shared.push("keep his facial hair in exactly the same shape, length and density as the photo, including a clean-shaven look if that is what the photo shows");
-  } else if (gender === "female") {
-    // Female faces are where Kontext most often drifts into a generic beauty default.
-    shared.push("keep her exact facial proportions, natural asymmetry and real look");
-    shared.push("preserve her makeup or natural bare-skin look exactly as in the photo");
-    shared.push("do not enlarge the eyes, slim the nose, plump the lips, narrow the jaw or soften the face into an idealized beauty standard");
+    parts.push("keep any facial hair in exactly the same shape, length and density as the photo, including a clean-shaven look if that is what the photo shows");
   }
 
-  return `${shared.join(", ")}.`;
+  return `${parts.join(", ")}.`;
 }
 
 function friendIdentitySentence() {
