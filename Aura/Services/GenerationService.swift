@@ -16,6 +16,8 @@ struct SceneJobResponse: Decodable {
     let pose: String
     let hasCompanion: Bool
     let isReroll: Bool
+    let motionStyle: String?
+    let spokenLine: String?
     let createdAt: String
     let error: String?
 }
@@ -73,20 +75,37 @@ struct GenerationService {
         return try await waitForCompletion(jobId: job.jobId, token: token, onProgress: onProgress)
     }
 
-    /// Animates a completed scene into a short cinematic clip and returns the video URL.
+    private struct VideoJobRequest: Encodable {
+        let motionStyle: String
+        let spokenLine: String
+    }
+
+    struct AnimatedClip {
+        let videoURL: URL
+        let caption: String?
+        let motionStyle: String?
+    }
+
+    /// Animates a completed scene into a short directed clip and returns the video URL.
     func animate(
         jobId: String,
+        motionStyle: VideoMotionStyle,
+        spokenLine: String,
         token: String,
         onProgress: @MainActor @escaping (Int) -> Void
-    ) async throws -> URL {
+    ) async throws -> AnimatedClip {
         let job: SceneJobResponse = try await api.post(
             "scene-jobs/\(jobId)/video",
-            body: APIService.EmptyBody(),
+            body: VideoJobRequest(motionStyle: motionStyle.rawValue, spokenLine: spokenLine),
             token: token
         )
 
         if job.status == "completed", let videoURL = job.videoURL {
-            return videoURL
+            return AnimatedClip(
+                videoURL: videoURL,
+                caption: job.spokenLine,
+                motionStyle: job.motionStyle
+            )
         }
 
         let startedAt = Date()
@@ -103,7 +122,11 @@ struct GenerationService {
                 guard let videoURL = polled.videoURL else {
                     throw SceneMeAPIError.invalidResponse
                 }
-                return videoURL
+                return AnimatedClip(
+                    videoURL: videoURL,
+                    caption: polled.spokenLine,
+                    motionStyle: polled.motionStyle
+                )
             case "failed":
                 throw SceneMeAPIError.failed(polled.error ?? "Video generation failed.")
             case "cancelled":
@@ -176,6 +199,7 @@ struct GenerationService {
             sceneLocation: job.sceneLocation,
             imageURL: imageURL,
             videoURL: job.videoURL,
+            videoCaption: job.spokenLine,
             timeOfDay: TimeOfDay(rawValue: job.timeOfDay) ?? .goldenHour,
             weather: WeatherOption(rawValue: job.weather) ?? .sunny,
             pose: PoseOption(rawValue: job.pose) ?? .casual,

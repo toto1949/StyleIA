@@ -9,6 +9,8 @@ struct GenerationResult: Codable, Equatable, Identifiable {
     let imageURL: URL
     /// Set once the user animates the scene into a short video clip.
     var videoURL: URL?
+    /// Spoken caption from Talking director mode (shown over the player).
+    var videoCaption: String?
     let timeOfDay: TimeOfDay
     let weather: WeatherOption
     let pose: PoseOption

@@ -393,27 +393,27 @@ final class SceneMeViewModel: ObservableObject {
         }
     }
 
-    /// Animates the current result into a short cinematic video clip.
-    /// The backend caches the clip, so re-animating the same result is free.
-    func animateScene() {
-        if requireTier(.pro, feature: "Video Animation") { return }
+    /// Animates the current result with Video Director settings.
+    /// Matching style + caption reuses the cached clip; a new direction regenerates.
+    func animateScene(motionStyle: VideoMotionStyle, spokenLine: String) {
+        if requireTier(.pro, feature: "Video Director") { return }
         guard let result = currentResult else { return }
-
-        if result.videoURL != nil {
-            presentVideoPlayer = true
-            return
-        }
-
         guard let api, let jobId = currentJobId else { return }
 
         isAnimating = true
         Task {
             do {
                 let token = try await token(using: api)
-                let videoURL = try await GenerationService(api: api).animate(jobId: jobId, token: token) { _ in }
+                let clip = try await GenerationService(api: api).animate(
+                    jobId: jobId,
+                    motionStyle: motionStyle,
+                    spokenLine: spokenLine,
+                    token: token
+                ) { _ in }
 
                 var updated = result
-                updated.videoURL = videoURL
+                updated.videoURL = clip.videoURL
+                updated.videoCaption = clip.caption?.isEmpty == false ? clip.caption : (spokenLine.isEmpty ? nil : spokenLine)
                 currentResult = updated
                 if let index = history.firstIndex(where: { $0.id == updated.id }) {
                     history[index] = updated

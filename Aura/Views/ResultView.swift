@@ -14,6 +14,7 @@ struct ResultView: View {
     @State private var exportImage: UIImage?
     @State private var showPostcard = false
     @State private var showFilters = false
+    @State private var showVideoDirector = false
     /// Fit mode shows the entire image (uncropped) and hides the controls.
     @State private var showFullImage = false
     @State private var hasAppeared = false
@@ -111,9 +112,28 @@ struct ResultView: View {
                 .presentationDragIndicator(.hidden)
             }
         }
+        .sheet(isPresented: $showVideoDirector) {
+            AnimateDirectorSheet(
+                sceneName: result.sceneName,
+                sceneLocation: result.sceneLocation,
+                sceneCategory: viewModel.request?.scene.category
+                    ?? viewModel.scenes.first(where: { $0.id == result.sceneId })?.category,
+                hasExistingVideo: result.videoURL != nil,
+                onGenerate: { style, line in
+                    viewModel.animateScene(motionStyle: style, spokenLine: line)
+                },
+                onPlayExisting: {
+                    viewModel.presentVideoPlayer = true
+                }
+            )
+        }
         .fullScreenCover(isPresented: $viewModel.presentVideoPlayer) {
             if let videoURL = viewModel.currentResult?.videoURL {
-                SceneVideoPlayerView(videoURL: videoURL, sceneName: result.sceneName) { url in
+                SceneVideoPlayerView(
+                    videoURL: videoURL,
+                    sceneName: result.sceneName,
+                    caption: viewModel.currentResult?.videoCaption
+                ) { url in
                     viewModel.saveVideoToPhotoLibrary(url)
                 }
             }
@@ -369,7 +389,8 @@ struct ResultView: View {
                 isLocked: !viewModel.currentTier.canAnimateToVideo
             ) {
                 guard !viewModel.isAnimating else { return }
-                viewModel.animateScene()
+                if viewModel.requireTier(.pro, feature: "Video Director") { return }
+                showVideoDirector = true
             }
 
             Spacer()

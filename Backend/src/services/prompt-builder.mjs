@@ -209,10 +209,28 @@ function weatherTextFor(weather, timeOfDay) {
     : weatherMap[weather] || weatherMap.sunny;
 }
 
+export const allowedMotionStyles = ["cinematic", "talking", "portrait", "energy"];
+
 /// Cinematic motion prompt for image-to-video, derived from the generated still.
 /// PixVerse responds best to full sentences that describe restrained, layered
 /// motion; over-promising action is what causes face morphing and warping.
-export function buildVideoPrompt({ scene, timeOfDay, weather, pose }) {
+///
+/// motionStyle:
+///   cinematic — default living editorial push-in
+///   talking   — interview / talk-show speaking performance (+ optional caption line)
+///   portrait  — near-still beauty/portrait breathing shot
+///   energy    — ambient-heavy scene life (weather, crowd, lights)
+export function buildVideoPrompt({
+  scene,
+  timeOfDay,
+  weather,
+  pose,
+  motionStyle = "cinematic",
+  spokenLine = ""
+}) {
+  const style = normalizeMotionStyle(motionStyle);
+  const line = sanitizeSpokenLine(spokenLine);
+
   const ambientMotion = {
     sunny: "sunlight shimmers softly and a gentle breeze moves hair and fabric",
     rainy: "steady rain falls, droplets splash and reflections ripple across the wet ground",
@@ -226,6 +244,52 @@ export function buildVideoPrompt({ scene, timeOfDay, weather, pose }) {
     night: "city lights and signage glowing steadily with a subtle shimmer"
   };
 
+  const ambient = ambientMotion[weather] || ambientMotion.sunny;
+  const time = timeMotion[timeOfDay] || timeMotion.golden_hour;
+  const identity =
+    "The person's face, identity, hairstyle, body and outfit remain perfectly consistent with the input image in every single frame, sharp, stable and photorealistic.";
+
+  if (style === "talking") {
+    const speech = line
+      ? `They are mid-conversation, speaking these words with natural lip motion and expressive but subtle facial acting: "${line}".`
+      : "They are mid-conversation, speaking with natural lip motion, soft jaw movement and expressive but subtle facial acting, as if answering a question on a talk show or interview.";
+
+    const caption = line
+      ? `Burn a clean, readable lower-third caption across the bottom of the frame with the exact text: "${line}". White sans-serif letters with a soft dark shadow or bar for contrast, television-interview style, stable and sharp for the whole clip.`
+      : "No on-screen caption text.";
+
+    return [
+      `A living talk-show / interview moment ${scene.base_prompt}.`,
+      speech,
+      "Natural micro-gestures: a slight head nod, soft hand motion near the torso, confident eye contact toward camera or an off-camera host.",
+      `Around them, ${ambient}, with ${time}.`,
+      "Camera work: locked-off or very slow subtle push-in, broadcast-interview framing, no whip pans, no cuts.",
+      caption,
+      identity
+    ].join(" ");
+  }
+
+  if (style === "portrait") {
+    return [
+      `An intimate living portrait ${scene.base_prompt}.`,
+      "The person stays nearly still, breathing softly, with a tiny natural blink and a gentle, almost imperceptible smile.",
+      `Hair and fabric move only slightly. Around them, ${ambient}, with ${time}.`,
+      "Camera work: extremely slow, elegant push-in, shallow depth of field, beauty-editorial stillness.",
+      identity
+    ].join(" ");
+  }
+
+  if (style === "energy") {
+    return [
+      `A high-atmosphere living scene ${scene.base_prompt}.`,
+      "The person holds a confident presence with restrained body motion while the world around them feels alive.",
+      `Around them, ${ambient}, with ${time}, plus richer environmental life — distant figures, light flicker, air and atmosphere moving with realistic physics.`,
+      "Camera work: smooth cinematic drift or gentle orbiting push, stabilized, no cuts.",
+      identity
+    ].join(" ");
+  }
+
+  // cinematic (default)
   const subjectMotion = pose === "walking"
     ? "The person walks forward slowly with a confident natural gait, arms swinging gently."
     : pose === "action"
@@ -235,11 +299,29 @@ export function buildVideoPrompt({ scene, timeOfDay, weather, pose }) {
   return [
     `A cinematic living moment ${scene.base_prompt}.`,
     subjectMotion,
-    `Around them, ${ambientMotion[weather] || ambientMotion.sunny}, with ${timeMotion[timeOfDay] || timeMotion.golden_hour}.`,
+    `Around them, ${ambient}, with ${time}.`,
     "The background breathes with subtle life — distant figures, light and atmosphere shifting naturally, realistic physics.",
     "Camera work: one slow, smooth stabilized push-in toward the subject, no cuts, no whip pans, shallow cinematic depth of field.",
-    "The person's face, identity, hairstyle, body and outfit remain perfectly consistent with the input image in every single frame, sharp, stable and photorealistic."
+    identity
   ].join(" ");
+}
+
+export function normalizeMotionStyle(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return allowedMotionStyles.includes(normalized) ? normalized : "cinematic";
+}
+
+export function sanitizeSpokenLine(value) {
+  return String(value || "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s.,'!?&-]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+export function videoCacheKey(motionStyle, spokenLine) {
+  return `${normalizeMotionStyle(motionStyle)}|${sanitizeSpokenLine(spokenLine)}`;
 }
 
 export function normalizeCompanionKind(value) {

@@ -14,10 +14,13 @@ import {
   buildPrompt,
   buildVideoPrompt,
   normalizeCompanionKind,
+  normalizeMotionStyle,
   normalizePose,
   normalizeSubjectGender,
   normalizeTimeOfDay,
-  normalizeWeather
+  normalizeWeather,
+  sanitizeSpokenLine,
+  videoCacheKey
 } from "../services/prompt-builder.mjs";
 import { store } from "../services/store-instance.mjs";
 import { broadcastJobUpdate } from "../websocket.mjs";
@@ -63,8 +66,15 @@ export async function rerollSceneJob(request, response, sourceJobId) {
 }
 
 /// Animates a completed scene image into a short video clip.
+/// Body (optional): { motionStyle, spokenLine }
+/// Cache reuses only when the same director settings were used before.
 export async function createVideoJob(request, response, sourceJobId) {
   const auth = authenticateRequest(request);
+  const body = await readJSON(request).catch(() => ({}));
+  const motionStyle = normalizeMotionStyle(body.motionStyle);
+  const spokenLine = sanitizeSpokenLine(body.spokenLine);
+  const cacheKey = videoCacheKey(motionStyle, spokenLine);
+
   const data = await store.snapshot();
   const source = data.jobs.find(
     (candidate) => candidate.jobId === sourceJobId && candidate.userId === auth.sub && candidate.type === "scene"
@@ -77,8 +87,9 @@ export async function createVideoJob(request, response, sourceJobId) {
     throw new HttpError(409, "Scene must finish generating before it can be animated.");
   }
 
-  // Animating the same result twice would waste credits; reuse the video.
-  if (source.videoURL) {
+  // Reuse only when director settings match the cached clip.
+  const cachedKey = source.videoCacheKey || videoCacheKey("cinematic", "");
+  if (source.videoURL && cachedKey === cacheKey) {
     const cached = {
       ...source,
       jobId: crypto.randomUUID(),
@@ -86,7 +97,10 @@ export async function createVideoJob(request, response, sourceJobId) {
       sourceJobId,
       status: "completed",
       progress: 100,
-      videoURL: source.videoURL
+      videoURL: source.videoURL,
+      motionStyle: source.videoMotionStyle || "cinematic",
+      spokenLine: source.videoSpokenLine || "",
+      videoCacheKey: cachedKey
     };
     sendJSON(response, 200, sceneJobResponse(cached));
     return;
@@ -96,7 +110,9 @@ export async function createVideoJob(request, response, sourceJobId) {
     scene: { base_prompt: source.basePrompt || source.sceneName || "the scene" },
     timeOfDay: source.timeOfDay,
     weather: source.weather,
-    pose: source.pose
+    pose: source.pose,
+    motionStyle,
+    spokenLine
   });
 
   const job = await store.mutate(async (current) => {
@@ -113,6 +129,9 @@ export async function createVideoJob(request, response, sourceJobId) {
       weather: source.weather,
       pose: source.pose,
       subjectGender: source.subjectGender || "auto",
+      motionStyle,
+      spokenLine,
+      videoCacheKey: cacheKey,
       prompt: videoPrompt,
       sourceImageURL: source.imageURL,
       status: "pending",
@@ -128,7 +147,13 @@ export async function createVideoJob(request, response, sourceJobId) {
     return created;
   });
 
-  logScene("video_job_created", { jobId: job.jobId, sourceJobId, sceneId: job.sceneId });
+  logScene("video_job_created", {
+    jobId: job.jobId,
+    sourceJobId,
+    sceneId: job.sceneId,
+    motionStyle,
+    hasSpokenLine: Boolean(spokenLine)
+  });
   startVideoGeneration(job.jobId);
   sendJSON(response, 200, sceneJobResponse(job));
 }
@@ -391,12 +416,15 @@ async function runVideoGeneration(jobId) {
 
     await transitionJob(jobId, { status: "completed", progress: 100, videoURL, error: "" });
 
-    // Persist the video onto the source scene job so the result is reused on
-    // future "animate" taps and surfaces in history.
+    // Persist the video + director settings onto the source scene job so
+    // matching re-animates reuse the clip (and history can show the caption).
     await store.mutate(async (data) => {
       const source = data.jobs.find((candidate) => candidate.jobId === job.sourceJobId);
       if (source) {
         source.videoURL = videoURL;
+        source.videoMotionStyle = job.motionStyle || "cinematic";
+        source.videoSpokenLine = job.spokenLine || "";
+        source.videoCacheKey = job.videoCacheKey || videoCacheKey(job.motionStyle, job.spokenLine);
         source.updatedAt = new Date().toISOString();
       }
     });
@@ -501,6 +529,8 @@ function sceneJobResponse(job) {
     pose: job.pose,
     hasCompanion: Boolean(job.companionS3Key),
     isReroll: Boolean(job.isReroll),
+    motionStyle: job.motionStyle || job.videoMotionStyle || null,
+    spokenLine: job.spokenLine || job.videoSpokenLine || null,
     prompt: job.prompt,
     originalPhotoURL: job.originalPhotoURL || null,
     createdAt: job.createdAt,

@@ -2,15 +2,22 @@ import AVKit
 import SwiftUI
 
 /// Full-screen sheet that plays the animated scene clip on loop,
-/// with save and share actions.
+/// with save and share actions. Optional caption for Talking director clips.
 struct SceneVideoPlayerView: View {
     let videoURL: URL
     let sceneName: String
+    var caption: String? = nil
     let onSave: (URL) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var player: AVPlayer?
     @State private var looper: Any?
+
+    private var trimmedCaption: String? {
+        guard let caption else { return nil }
+        let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -22,6 +29,24 @@ struct SceneVideoPlayerView: View {
             } else {
                 ProgressView()
                     .tint(SceneMeTheme.gold)
+            }
+
+            // Broadcast-style lower-third caption for Talking clips.
+            if let trimmedCaption {
+                VStack {
+                    Spacer()
+                    Text(trimmedCaption)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.black.opacity(0.55))
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 210)
+                }
+                .allowsHitTesting(false)
             }
 
             LinearGradient(

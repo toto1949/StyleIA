@@ -134,19 +134,61 @@ const badResponse = await fetch(`${base}/v1/scene-jobs`, {
 if (badResponse.status !== 400) fail(`empty custom scene should be 400, got ${badResponse.status}`);
 console.log("custom scene validation ok");
 
-// 7. Video job from completed scene
-const video = await api(`/v1/scene-jobs/${done1.jobId}/video`, { method: "POST", body: "{}" }, token);
+// 7. Video job from completed scene (Talking director + caption)
+const video = await api(
+  `/v1/scene-jobs/${done1.jobId}/video`,
+  {
+    method: "POST",
+    body: JSON.stringify({
+      motionStyle: "talking",
+      spokenLine: "You're not going to believe this night."
+    })
+  },
+  token
+);
 if (video.kind !== "video") fail("expected video kind");
+if (!video.prompt?.includes("talk-show") && !video.prompt?.includes("mid-conversation")) {
+  fail("talking video prompt missing speaking direction");
+}
+if (!video.prompt?.includes("You're not going to believe this night.")) {
+  fail("talking video prompt missing spoken caption line");
+}
 const videoDone = await waitForJob(video.jobId, token);
 if (!videoDone.videoURL) fail("video job missing videoURL");
 console.log(`video job ok -> ${videoDone.videoURL}`);
 
-// 8. Second animate tap reuses the cached video (no new generation)
-const videoAgain = await api(`/v1/scene-jobs/${done1.jobId}/video`, { method: "POST", body: "{}" }, token);
+// 8. Same director settings reuse the cached video (no new generation)
+const videoAgain = await api(
+  `/v1/scene-jobs/${done1.jobId}/video`,
+  {
+    method: "POST",
+    body: JSON.stringify({
+      motionStyle: "talking",
+      spokenLine: "You're not going to believe this night."
+    })
+  },
+  token
+);
 if (videoAgain.status !== "completed" || videoAgain.videoURL !== videoDone.videoURL) {
   fail("second animate should reuse cached video instantly");
 }
 console.log("video reuse ok");
+
+// 8b. Different director settings must NOT reuse the old cache key blindly
+// (in mock mode a new job is created; we only assert the request is accepted)
+const redirected = await api(
+  `/v1/scene-jobs/${done1.jobId}/video`,
+  {
+    method: "POST",
+    body: JSON.stringify({ motionStyle: "portrait", spokenLine: "" })
+  },
+  token
+);
+if (!redirected.jobId) fail("redirected video job missing jobId");
+if (redirected.prompt && redirected.prompt.includes("talk-show")) {
+  fail("portrait redirect should not keep talking prompt");
+}
+console.log("video redirect ok");
 
 // 9. History still lists image jobs with videoURL attached
 const history = await api("/v1/history?page=1&limit=10", {}, token);
