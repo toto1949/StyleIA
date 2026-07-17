@@ -1,8 +1,9 @@
 // Prompt builder for FLUX Kontext — an instruction-following image EDITING
 // model. It responds best to clear natural-language sentences that say what
-// to change and, critically, what to KEEP. It has no negative-prompt input:
-// naming unwanted concepts ("no beard", "no cartoon") makes them MORE likely,
-// so everything below is phrased positively.
+// to change and, critically, what to KEEP. Identity must lead the prompt:
+// Kontext attends more strongly to early instructions. It has no negative-
+// prompt input: naming unwanted concepts ("no beard", "cartoon") can make
+// them MORE likely, so everything below is phrased as what to preserve.
 
 const timeMap = {
   morning: "soft morning light with golden sunrise tones and gentle long shadows",
@@ -43,7 +44,12 @@ const sceneSignatures = {
   "art-gallery": "Compose with minimalist gallery restraint, generous negative space on the white walls, a precise museum spotlight sculpting the subject.",
   "nba-courtside": "Make it feel like a candid celebrity courtside photo, arena floodlights and jumbotron glow, the game alive but blurred behind.",
   "coachella": "Bathe the frame in golden festival haze, the ferris wheel silhouetted behind, a touch of warm lens flare.",
-  "red-carpet": "Light it with crisp paparazzi flash against the glowing step-and-repeat backdrop, glossy premiere-night glamour."
+  "red-carpet": "Light it with crisp paparazzi flash against the glowing step-and-repeat backdrop, glossy premiere-night glamour.",
+  "studio-headshot": "Compose a clean, LinkedIn-ready studio portrait with soft key light, subtle rim separation and an uncluttered grey backdrop.",
+  "executive-office": "Frame a quiet-power editorial inside the corner office, skyline soft behind the glass, warm wood and polished surfaces grounding the shot.",
+  "keynote-stage": "Shoot it like a keynote still: soft stage spotlights, glowing screen behind, the auditorium falling into dark bokeh.",
+  "summer-beach-club": "Keep it sun-drenched beach-club editorial, white daybeds and turquoise water filling the depth behind the subject.",
+  "fireworks-night": "Compose a festive rooftop night still, fireworks bursting overhead, warm sparkler light catching the subject."
 };
 
 const categorySignatures = {
@@ -51,6 +57,7 @@ const categorySignatures = {
   luxury: "Compose it like a polished luxury-magazine editorial, aspirational and refined.",
   nature: "Frame it like epic travel photography, the landscape vast and breathtaking around the subject.",
   events: "Capture a VIP event-photography feel, the atmosphere electric around the subject.",
+  professional: "Keep it polished and corporate-editorial, clean light and a confident, camera-ready presence.",
   custom: ""
 };
 
@@ -58,9 +65,11 @@ export const allowedTimes = Object.keys(timeMap);
 export const allowedWeather = Object.keys(weatherMap);
 export const allowedPoses = Object.keys(poseMap);
 
-// Shared realism/craft instruction used by every generation path.
 const REALISM_SENTENCE =
-  "Render it as a photorealistic photograph shot on a professional full-frame camera with a 50mm lens at f/2.8: natural skin texture with visible pores, true-to-photo skin tone, anatomically correct hands with five fingers each, natural body proportions, sharp focus, cinematic color grading.";
+  "Photorealistic full-frame photograph, 50mm lens at f/2.8: natural skin texture with visible pores, true-to-photo skin tone, anatomically correct hands with five fingers each, natural body proportions, sharp focus on the faces, cinematic color grading.";
+
+const ANTI_BEAUTIFY =
+  "Keep every unique and imperfect detail exactly as photographed — do not beautify, smooth, slim, retouch, de-age, reshape or idealize the face or body, and do not replace anyone with a generic attractive model.";
 
 export function buildPrompt({
   scene,
@@ -74,67 +83,78 @@ export function buildPrompt({
 }) {
   const gender = normalizeSubjectGender(subjectGender);
 
-  // A human companion is a fundamentally different, two-source composition and
-  // needs its own prompt so faces aren't swapped/merged and each person gets
-  // their own suitable outfit.
   if (hasCompanion && companionKind === "friend") {
-    return buildFriendPrompt({ scene, timeOfDay, weather, pose, reroll });
+    return buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender: gender, reroll });
   }
 
-  const noun = subjectNoun(gender);
-  const outfit = outfitFor(scene, gender);
+  if (hasCompanion && companionKind === "pet") {
+    return buildPetPrompt({ scene, timeOfDay, weather, pose, subjectGender: gender, reroll });
+  }
 
-  // "clear blue sky, bright sunlight" contradicts night scenes, so swap in a night-safe clear-sky phrase.
+  return buildSoloPrompt({ scene, timeOfDay, weather, pose, subjectGender: gender, reroll });
+}
+
+/// Solo generation: identity FIRST, then scene/outfit edit.
+function buildSoloPrompt({ scene, timeOfDay, weather, pose, subjectGender, reroll }) {
+  const noun = subjectNoun(subjectGender);
+  const outfit = outfitFor(scene, subjectGender);
   const weatherText = weatherTextFor(weather, timeOfDay);
 
   const sentences = [
-    // 1. The edit instruction: what changes.
-    `Place the exact same ${noun} from the input photo ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+    // 1. Identity lock leads — Kontext weights early instructions most heavily.
+    identityLead(subjectGender, noun),
 
-    // 2. Outfit swap.
-    `Dress them in ${outfit}; the clothing fits their real body shape with natural fabric drape, realistic seams and correct proportions.`,
+    // 2. The edit: place that same person into the scene.
+    `Place this exact same ${noun} ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
 
-    // 3. Pose + scene-specific photographic identity.
+    // 3. Outfit — clothes change; face and body do not.
+    `Change only the clothing: dress them in ${outfit}. The clothing must fit their real body shape and weight with natural fabric drape, realistic seams and correct proportions. Keep the face, hair, skin and body completely unchanged.`,
+
+    // 4. Pose + scene signature.
     `They are ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
 
-    // 4. Identity lock: what must NOT change (phrased as what to keep).
-    identitySentence(gender),
+    // 5. Hard identity reinforcement (gender-aware).
+    identityDetails(subjectGender),
 
-    // 5. Person count (+ pet, if any).
-    companionSentence(hasCompanion, companionKind),
+    ANTI_BEAUTIFY,
 
-    // 6. Framing.
+    "Exactly one person appears in the scene.",
+
     "Full-body vertical composition with the subject as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
 
-    // 7. Realism and craft.
     REALISM_SENTENCE
   ];
 
   if (reroll) {
-    sentences.push("Change only the outfit into a completely different style and color palette than before, while keeping the face, pose, scene and background exactly the same.");
+    sentences.push("Change only the outfit into a completely different style and color palette than before, while keeping the face, hair, body, pose, scene and background exactly the same.");
   }
 
   return sentences.filter(Boolean).join(" ");
 }
 
-/// Two-person prompt for a human companion. Input images arrive as
-/// [subject, companion]; the prompt maps them to "first" and "second" person,
-/// styles each individually (no single gendered outfit forced on both), and
-/// locks each face to its own source so they aren't blended or swapped.
-function buildFriendPrompt({ scene, timeOfDay, weather, pose, reroll }) {
+/// Two-person prompt. image_urls arrive as [subject, companion].
+/// Map them explicitly so faces are never swapped or blended.
+function buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender, reroll }) {
   const weatherText = weatherTextFor(weather, timeOfDay);
+  const primaryNoun = subjectNoun(subjectGender);
   const outfitTheme = scene.default_outfit;
 
   const sentences = [
-    `Combine two real people into one photograph — the person from the first input image and the person from the second input image, together ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+    "This is a multi-image identity edit using two reference photos.",
 
-    `Dress each person individually in ${outfitTheme}, tailored to suit that specific person and matching their own gender and body, with natural fabric drape, realistic seams and correct proportions on each of them.`,
+    `Image 1 is the primary ${primaryNoun === "person" ? "person" : primaryNoun}; Image 2 is their friend. Keep each face locked to its own source photo.`,
 
-    `They stand together side by side, close and interacting warmly and naturally, each ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
+    `Place the exact same person from Image 1 and the exact same person from Image 2 together ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+
+    `Dress each person individually in clothing from this theme: ${outfitTheme}. Style each outfit to match that person's own gender, body shape and proportions — never force one person's clothing style onto the other. Keep both faces, hairstyles and bodies completely unchanged.`,
+
+    `They stand side by side, close and interacting warmly and naturally, each ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
 
     friendIdentitySentence(),
 
-    "Exactly two people appear: the first person's face and body come only from the first input image, and the second person's face and body come only from the second input image, standing a natural distance apart with both fully visible.",
+    ANTI_BEAUTIFY,
+
+    "Exactly two people appear in the frame. The person on the viewer's left or as the primary subject comes only from Image 1; the other person comes only from Image 2. Both are fully visible, standing a natural distance apart — never merge them into one face or body.",
 
     "Full-body vertical composition with both people sharing the focal point, both visible from head to shoes, all feet and footwear inside the frame, camera at chest height.",
 
@@ -142,7 +162,42 @@ function buildFriendPrompt({ scene, timeOfDay, weather, pose, reroll }) {
   ];
 
   if (reroll) {
-    sentences.push("Change only the outfits into a completely different style and color palette than before, while keeping both faces, their poses, the scene and the background exactly the same.");
+    sentences.push("Change only the outfits into a completely different style and color palette than before, while keeping both faces, hairstyles, bodies, poses, the scene and the background exactly the same.");
+  }
+
+  return sentences.filter(Boolean).join(" ");
+}
+
+/// Human + pet: keep the human identity lock as strong as solo, plus pet fidelity.
+function buildPetPrompt({ scene, timeOfDay, weather, pose, subjectGender, reroll }) {
+  const noun = subjectNoun(subjectGender);
+  const outfit = outfitFor(scene, subjectGender);
+  const weatherText = weatherTextFor(weather, timeOfDay);
+
+  const sentences = [
+    identityLead(subjectGender, noun),
+
+    `Place this exact same ${noun} ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+
+    `Dress them in ${outfit}; the clothing fits their real body shape with natural fabric drape, realistic seams and correct proportions. Keep the face, hair, skin and body completely unchanged.`,
+
+    `They are ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
+
+    identityDetails(subjectGender),
+
+    "Their pet from Image 2 / the second input photo joins them naturally at their side. Keep the pet's species, breed, size, fur color, face and unique markings exactly identical to its photo.",
+
+    ANTI_BEAUTIFY,
+
+    "Exactly one person and one pet appear in the scene.",
+
+    "Full-body vertical composition with the person as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
+
+    REALISM_SENTENCE
+  ];
+
+  if (reroll) {
+    sentences.push("Change only the outfit into a completely different style and color palette than before, while keeping the face, pet, pose, scene and background exactly the same.");
   }
 
   return sentences.filter(Boolean).join(" ");
@@ -187,18 +242,6 @@ export function buildVideoPrompt({ scene, timeOfDay, weather, pose }) {
   ].join(" ");
 }
 
-function companionSentence(hasCompanion, companionKind) {
-  if (!hasCompanion) {
-    return "Exactly one person appears in the scene.";
-  }
-
-  if (companionKind === "pet") {
-    return "The person's pet from the second input photo joins them naturally at their side; keep the pet's species, breed, size, fur color and unique markings exactly identical to its photo. Exactly one person and one pet appear in the scene.";
-  }
-
-  return "Exactly two people share the scene naturally, interacting warmly; both faces are kept perfectly identical to their respective input photos.";
-}
-
 export function normalizeCompanionKind(value) {
   return String(value || "").trim().toLowerCase() === "pet" ? "pet" : "friend";
 }
@@ -227,28 +270,51 @@ function subjectNoun(gender) {
   return "person";
 }
 
-function identitySentence(gender) {
-  const parts = [
-    "Critically important: this is a face-preserving edit — keep the person's face 100% identical to the input photo",
-    "the exact same face geometry and proportions, eyes, eyebrows, nose, mouth, lips, jawline, cheekbones and hairline",
-    "the same skin tone and complexion, the same apparent age, the same body shape and weight",
-    "the same hair color, length and hairstyle",
-    "and any glasses, freckles, moles, scars or facial marks kept exactly where they are"
+function identityLead(gender, noun) {
+  const gendered = gender === "female"
+    ? "This is a face-preserving edit of a real woman from the input photo."
+    : gender === "male"
+      ? "This is a face-preserving edit of a real man from the input photo."
+      : "This is a face-preserving edit of a real person from the input photo.";
+
+  return `${gendered} Critically important: keep the person's face 100% identical to the input photo — the exact same ${noun}, instantly recognizable as this specific individual.`;
+}
+
+function identityDetails(gender) {
+  const shared = [
+    "Preserve the exact same face geometry and proportions",
+    "the same eye shape and spacing, eyebrows, nose shape, mouth and lip shape",
+    "the same jawline, cheekbones, chin and hairline",
+    "the same skin tone, complexion and texture",
+    "the same apparent age",
+    "the same body shape, height impression and weight",
+    "the same hair color, hair length, hairline and hairstyle",
+    "and any glasses, freckles, moles, scars or facial marks in exactly the same places"
   ];
 
   if (gender === "male") {
-    parts.push("his facial hair kept in exactly the same shape, length and density as the photo");
+    shared.push("keep his facial hair in exactly the same shape, length and density as the photo, including a clean-shaven look if that is what the photo shows");
   } else if (gender === "female") {
-    parts.push("her exact same facial features and natural look preserved, with any makeup or bare-skin look kept as in the photo");
+    // Female faces are where Kontext most often drifts into a generic beauty default.
+    shared.push("keep her exact facial proportions, natural asymmetry and real look");
+    shared.push("preserve her makeup or natural bare-skin look exactly as in the photo");
+    shared.push("do not enlarge the eyes, slim the nose, plump the lips, narrow the jaw or soften the face into an idealized beauty standard");
   }
 
-  // FLUX tends to beautify/idealize faces (especially women); this clause is
-  // what counteracts that drift and keeps the result recognizable.
-  return `${parts.join(", ")}. Do not beautify, smooth, slim, retouch, de-age or idealize the face or body in any way, and do not turn them into a generic attractive model — keep their real, unique features exactly, even if imperfect. The face must remain instantly recognizable as this exact same person, as if they were truly photographed on location.`;
+  return `${shared.join(", ")}.`;
 }
 
 function friendIdentitySentence() {
-  return "Critically important: keep the first person's face 100% identical to the first input photo and the second person's face 100% identical to the second input photo — for each of them the exact same face geometry, eyes, nose, mouth, jawline, cheekbones, skin tone, apparent age, body shape, hair color, length and hairstyle, plus any glasses, freckles, moles or marks. Never swap, blend, merge, average or mix up the two faces, and never copy one person's features onto the other. Do not beautify, slim or idealize either person. Each must stay instantly recognizable as the specific individual from their own input photo.";
+  return [
+    "Critically important: keep the first person's face 100% identical to Image 1 / the first input photo",
+    "and the second person's face 100% identical to Image 2 / the second input photo",
+    "For each person preserve the exact same face geometry, eyes, eyebrows, nose, mouth, lips, jawline, cheekbones, skin tone, apparent age, body shape, hair color, length and hairstyle",
+    "plus any glasses, freckles, moles or marks",
+    "Never swap, blend, merge, average or mix the two faces",
+    "never copy one person's features onto the other",
+    "and never invent a third person",
+    "Each must stay instantly recognizable as the specific individual from their own input photo"
+  ].join(". ") + ".";
 }
 
 export function normalizeSubjectGender(value) {

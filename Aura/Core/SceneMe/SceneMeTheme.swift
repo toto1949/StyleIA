@@ -59,6 +59,9 @@ struct SceneMeSectionHeader: View {
                         .font(.system(size: 11, weight: .bold))
                         .tracking(1.6)
                         .foregroundStyle(SceneMeTheme.gold)
+                        .padding(.vertical, 8)
+                        .padding(.leading, 12)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(SceneMePressButtonStyle())
             }
@@ -95,6 +98,7 @@ struct SceneMeCTAButton: View {
                 )
             )
             .clipShape(Capsule())
+            .contentShape(Capsule())
             .shadow(color: SceneMeTheme.gold.opacity(0.3), radius: 14, y: 6)
             .opacity(isEnabled ? 1 : 0.4)
         }
@@ -125,6 +129,7 @@ struct SceneMeSecondaryButton: View {
             .frame(height: 56)
             .background(SceneMeTheme.panel)
             .clipShape(Capsule())
+            .contentShape(Capsule())
             .overlay {
                 Capsule().stroke(SceneMeTheme.hairline, lineWidth: 1)
             }
@@ -144,9 +149,10 @@ struct SceneMeCircleButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isActive ? SceneMeTheme.gold : SceneMeTheme.text)
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .background(Color.black.opacity(0.55))
                 .clipShape(Circle())
+                .contentShape(Circle())
                 .overlay {
                     Circle().stroke(SceneMeTheme.hairline, lineWidth: 1)
                 }

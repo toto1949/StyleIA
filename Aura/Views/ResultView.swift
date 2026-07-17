@@ -341,6 +341,7 @@ struct ResultView: View {
             .padding(.vertical, 7)
             .background(Color.black.opacity(0.5))
             .clipShape(Capsule())
+            .contentShape(Capsule())
             .overlay {
                 Capsule().stroke(isSelected ? SceneMeTheme.gold : SceneMeTheme.hairline, lineWidth: 1)
             }
@@ -431,6 +432,7 @@ struct ResultView: View {
                     .tracking(1.4)
                     .foregroundStyle(SceneMeTheme.subtleText)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(SceneMePressButtonStyle())
     }

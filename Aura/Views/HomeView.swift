@@ -44,9 +44,10 @@ struct HomeView: View {
                 Text(viewModel.profile.initial)
                     .font(.system(size: 15, weight: .semibold, design: .serif))
                     .foregroundStyle(SceneMeTheme.gold)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 44, height: 44)
                     .background(SceneMeTheme.panel)
                     .clipShape(Circle())
+                    .contentShape(Circle())
                     .overlay {
                         Circle().stroke(SceneMeTheme.gold.opacity(0.7), lineWidth: 1)
                     }
@@ -223,43 +224,54 @@ struct GenerationCard: View {
 
     @State private var confirmDelete = false
 
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 4, style: .continuous)
+    }
+
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .bottomLeading) {
-                AsyncImage(url: result.imageURL) { phase in
-                    if case .success(let image) = phase {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Rectangle()
-                            .fill(SceneMeTheme.surface)
-                            .overlay {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(SceneMeTheme.faintText)
+                // Color.clear + overlay keeps scaledToFill from expanding the
+                // hit-test region past the card bounds (steals taps from chips above).
+                Color.clear
+                    .overlay {
+                        AsyncImage(url: result.imageURL) { phase in
+                            if case .success(let image) = phase {
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            } else {
+                                SceneMeTheme.surface
+                                    .overlay {
+                                        Image(systemName: "photo")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(SceneMeTheme.faintText)
+                                    }
                             }
+                        }
                     }
-                }
+                    .clipped()
 
                 LinearGradient(
                     colors: [.clear, Color.black.opacity(0.85)],
                     startPoint: .center,
                     endPoint: .bottom
                 )
+                .allowsHitTesting(false)
 
                 Text(result.sceneName.uppercased())
                     .font(.system(size: 9, weight: .heavy))
                     .tracking(1.6)
                     .foregroundStyle(SceneMeTheme.text)
                     .padding(10)
+                    .allowsHitTesting(false)
             }
             .frame(height: 170)
             .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 4, style: .continuous))
+            .clipShape(cardShape)
+            .contentShape(cardShape)
             .overlay {
-                RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 4, style: .continuous)
-                    .stroke(SceneMeTheme.hairline, lineWidth: 1)
+                cardShape.stroke(SceneMeTheme.hairline, lineWidth: 1)
             }
         }
         .buttonStyle(SceneMePressButtonStyle())

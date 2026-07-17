@@ -425,18 +425,23 @@ struct CinematicFilterView: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(SceneMeTheme.surface)
 
-                    if let preview = previews[filter] {
-                        Image(uiImage: preview)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Image(systemName: "film")
-                            .font(.system(size: 16))
-                            .foregroundStyle(SceneMeTheme.faintText)
-                    }
+                    Color.clear
+                        .overlay {
+                            if let preview = previews[filter] {
+                                Image(uiImage: preview)
+                                    .resizable()
+                                    .scaledToFill()
+                            } else {
+                                Image(systemName: "film")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(SceneMeTheme.faintText)
+                            }
+                        }
+                        .clipped()
                 }
                 .frame(width: 62, height: 82)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(isSelected ? SceneMeTheme.gold : SceneMeTheme.hairline, lineWidth: isSelected ? 1.5 : 1)
@@ -450,6 +455,7 @@ struct CinematicFilterView: View {
                     .foregroundStyle(isSelected ? SceneMeTheme.gold : SceneMeTheme.subtleText)
                     .frame(width: 66)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(SceneMePressButtonStyle())
     }

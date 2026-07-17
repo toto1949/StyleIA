@@ -27,6 +27,7 @@ struct PoseSelectorView: View {
                         .frame(width: 82, height: 78)
                         .background(SceneMeTheme.panel)
                         .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous))
                         .overlay {
                             RoundedRectangle(cornerRadius: SceneMeTheme.innerRadius, style: .continuous)
                                 .stroke(isSelected ? SceneMeTheme.gold : SceneMeTheme.hairline, lineWidth: isSelected ? 1.5 : 1)

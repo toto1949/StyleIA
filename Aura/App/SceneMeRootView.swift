@@ -23,6 +23,7 @@ struct SceneMeRootView: View {
                 case .home:
                     tabContent
                     SceneMeTabBar(viewModel: viewModel)
+                        .zIndex(10)
                 case .scenePicker:
                     ScenePickerView(viewModel: viewModel)
                 case .sceneOptions:
@@ -154,6 +155,8 @@ private struct SceneMeTabBar: View {
             }
             .foregroundStyle(isSelected ? SceneMeTheme.gold : SceneMeTheme.faintText)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
         .buttonStyle(SceneMePressButtonStyle())
     }
@@ -175,6 +178,8 @@ private struct SceneMeTabBar: View {
             }
         }
         .frame(maxWidth: .infinity)
+        // Lift the control with its hit target so taps match the raised circle.
+        .offset(y: -14)
     }
 
     private var centerLabel: some View {
@@ -190,8 +195,8 @@ private struct SceneMeTabBar: View {
                 )
             )
             .clipShape(Circle())
+            .contentShape(Circle())
             .shadow(color: SceneMeTheme.gold.opacity(0.4), radius: 12, y: 4)
-            .offset(y: -14)
     }
 }
 
@@ -269,6 +274,7 @@ private struct ExploreView: View {
                 .overlay {
                     Capsule().stroke(isSelected ? Color.clear : SceneMeTheme.hairline, lineWidth: 1)
                 }
+                .contentShape(Capsule())
         }
         .buttonStyle(SceneMePressButtonStyle())
     }
@@ -284,8 +290,10 @@ private struct GalleryView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+        // Header + filter sit outside the ScrollView so grid cards can never
+        // intercept taps meant for All / Favorites.
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Gallery")
                         .font(.system(size: 26, weight: .regular, design: .serif))
@@ -297,45 +305,54 @@ private struct GalleryView: View {
                             .foregroundStyle(SceneMeTheme.faintText)
                     }
                 }
-                .padding(.top, 16)
 
                 galleryFilter
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 16)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SceneMeTheme.ink)
+            .zIndex(1)
 
-                if results.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: favoritesOnly ? "heart" : "sparkles.rectangle.stack")
-                            .font(.system(size: 28))
-                            .foregroundStyle(SceneMeTheme.faintText)
+            ScrollView {
+                Group {
+                    if results.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: favoritesOnly ? "heart" : "sparkles.rectangle.stack")
+                                .font(.system(size: 28))
+                                .foregroundStyle(SceneMeTheme.faintText)
 
-                        Text(favoritesOnly ? "Tap the heart on a result to keep it here." : "Generate your first scene from Home.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(SceneMeTheme.subtleText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 90)
-                } else {
-                    LazyVGrid(
-                        columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                        spacing: 12
-                    ) {
-                        ForEach(results) { result in
-                            GenerationCard(
-                                result: result,
-                                isFavorite: viewModel.isFavorite(result),
-                                onToggleFavorite: { viewModel.toggleFavorite(result) },
-                                onDelete: { viewModel.deleteResult(result) }
-                            ) {
-                                viewModel.openResult(result)
+                            Text(favoritesOnly ? "Tap the heart on a result to keep it here." : "Generate your first scene from Home.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(SceneMeTheme.subtleText)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 90)
+                    } else {
+                        LazyVGrid(
+                            columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                            spacing: 12
+                        ) {
+                            ForEach(results) { result in
+                                GenerationCard(
+                                    result: result,
+                                    isFavorite: viewModel.isFavorite(result),
+                                    onToggleFavorite: { viewModel.toggleFavorite(result) },
+                                    onDelete: { viewModel.deleteResult(result) }
+                                ) {
+                                    viewModel.openResult(result)
+                                }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 110)
             }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 110)
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
         .background(SceneMeTheme.ink)
     }
 
@@ -347,7 +364,7 @@ private struct GalleryView: View {
             filterChip(title: "Favorites", count: viewModel.favoriteResults.count, isSelected: favoritesOnly) {
                 favoritesOnly = true
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
     }
 

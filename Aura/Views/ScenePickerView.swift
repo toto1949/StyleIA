@@ -170,6 +170,7 @@ struct ScenePickerView: View {
             .padding(13)
             .background(SceneMeTheme.panel.opacity(0.7))
             .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 4, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 4, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 4, style: .continuous)
                     .strokeBorder(
@@ -195,6 +196,7 @@ struct ScenePickerView: View {
                 .padding(.vertical, 9)
                 .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.panel)
                 .clipShape(Capsule())
+                .contentShape(Capsule())
                 .overlay {
                     Capsule().stroke(isSelected ? Color.clear : SceneMeTheme.hairline, lineWidth: 1)
                 }

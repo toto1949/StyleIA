@@ -10,17 +10,23 @@ struct SceneThumbnail: View {
                 fallbackGradient
 
                 if let url = scene.thumbnailURL {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let image) = phase {
-                            image
-                                .resizable()
-                                .scaledToFill()
+                    Color.clear
+                        .overlay {
+                            AsyncImage(url: url) { phase in
+                                if case .success(let image) = phase {
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                }
+                            }
                         }
-                    }
+                        .clipped()
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
+            .contentShape(Rectangle())
+            .allowsHitTesting(false)
         }
     }
 
@@ -74,16 +80,22 @@ struct SceneCardView: View {
     var overrideBadgeTitle: String?
     let onTap: () -> Void
 
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
+    }
+
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .topLeading) {
                 SceneThumbnail(scene: scene)
+                    .allowsHitTesting(false)
 
                 LinearGradient(
                     colors: [.clear, .clear, Color.black.opacity(0.88)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
+                .allowsHitTesting(false)
 
                 if let badgeTitle {
                     Text(badgeTitle)
@@ -95,6 +107,7 @@ struct SceneCardView: View {
                         .background(Color.black.opacity(0.72))
                         .clipShape(Capsule())
                         .padding(10)
+                        .allowsHitTesting(false)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -113,6 +126,7 @@ struct SceneCardView: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .allowsHitTesting(false)
 
                 if isSelected {
                     VStack {
@@ -128,17 +142,18 @@ struct SceneCardView: View {
                         Spacer()
                     }
                     .padding(10)
+                    .allowsHitTesting(false)
                 }
             }
             .frame(height: height)
             .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous))
+            .clipShape(cardShape)
+            .contentShape(cardShape)
             .overlay {
-                RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
-                    .stroke(
-                        isSelected ? SceneMeTheme.gold : SceneMeTheme.hairline,
-                        lineWidth: isSelected ? 1.5 : 1
-                    )
+                cardShape.stroke(
+                    isSelected ? SceneMeTheme.gold : SceneMeTheme.hairline,
+                    lineWidth: isSelected ? 1.5 : 1
+                )
             }
         }
         .buttonStyle(SceneMePressButtonStyle())

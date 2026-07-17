@@ -186,15 +186,32 @@ async function runFalRequest({ prompt, userImageURL, companionImageURL, seed, jo
     : { image_url: userImageURL, prompt };
 
   if (!safeMode) {
-    input.num_inference_steps = kontextSteps();
-    input.guidance_scale = kontextGuidanceScale();
-    // Consistent vertical editorial frame regardless of the input photo shape;
-    // gives the model room for the head-to-shoes composition the prompt asks for.
+    // Never let fal rewrite our carefully crafted identity locks.
+    input.enhance_prompt = false;
+    // Vertical editorial frame for head-to-shoes compositions.
     input.aspect_ratio = config.falImageAspectRatio;
+    // Multi-image Kontext Max rejects num_inference_steps (not in its schema).
+    // Sending it triggers ValidationError → safeMode fallback, which drops
+    // aspect_ratio/guidance and tanks companion quality. Only send steps on solo.
+    if (!isMulti) {
+      input.num_inference_steps = kontextSteps();
+    }
+    // Slightly stronger guidance on multi so both faces stay locked to sources.
+    input.guidance_scale = isMulti ? multiGuidanceScale() : kontextGuidanceScale();
     if (Number.isFinite(seed)) {
       input.seed = seed;
     }
   }
+
+  logFal("scene_request", {
+    jobId,
+    model,
+    isMulti,
+    safeMode,
+    guidance: input.guidance_scale ?? null,
+    aspectRatio: input.aspect_ratio ?? null,
+    steps: input.num_inference_steps ?? null
+  });
 
   const result = await fal.subscribe(model, {
     input,
@@ -301,6 +318,11 @@ function kontextSteps() {
 
 function kontextGuidanceScale() {
   return numberFromEnv("FAL_KONTEXT_GUIDANCE_SCALE", 3.5);
+}
+
+/// Multi-image face locking benefits from a touch more prompt adherence.
+function multiGuidanceScale() {
+  return numberFromEnv("FAL_MULTI_GUIDANCE_SCALE", 4.0);
 }
 
 function numberFromEnv(key, fallback) {
