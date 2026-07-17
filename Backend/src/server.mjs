@@ -22,6 +22,7 @@ import {
   rerollSceneJob,
   sceneHistory
 } from "./routes/generate.mjs";
+import { servePrivacyPolicy, serveTermsOfUse } from "./routes/legal.mjs";
 import { listScenes } from "./routes/scenes.mjs";
 import { presignUpload, receiveUpload, serveUpload } from "./routes/upload.mjs";
 import { store } from "./services/store-instance.mjs";
@@ -80,6 +81,16 @@ async function route(request, response) {
 
   if (request.method === "GET" && pathname === "/health") {
     sendJSON(response, 200, { ok: true });
+    return;
+  }
+
+  if (request.method === "GET" && (pathname === "/privacy" || pathname === "/privacy/")) {
+    servePrivacyPolicy(request, response);
+    return;
+  }
+
+  if (request.method === "GET" && (pathname === "/terms" || pathname === "/terms/")) {
+    serveTermsOfUse(request, response);
     return;
   }
 

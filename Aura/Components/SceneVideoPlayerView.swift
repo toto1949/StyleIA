@@ -1,3 +1,4 @@
+import AVFoundation
 import AVKit
 import SwiftUI
 
@@ -86,7 +87,12 @@ struct SceneVideoPlayerView: View {
             closeButton
         }
         .onAppear {
+            // Talking clips include TTS audio — play even if the hardware mute switch is on.
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+
             let created = AVPlayer(url: videoURL)
+            created.isMuted = false
             created.actionAtItemEnd = .none
             looper = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,

@@ -32,14 +32,14 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "4.99",
+          "displayPrice" : "6.99",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "C1A9F3E7-6B2D-4C8E-A5F0-19D3B7E64C82",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "30 generations, filters, re-rolls",
+              "description" : "30 generations, filters, re-rolls, no watermark",
               "displayName" : "Creator Monthly",
               "locale" : "en_US"
             }
@@ -57,14 +57,14 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "39.99",
+          "displayPrice" : "54.99",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "D8E4B2A6-3F7C-4D9E-B1A5-27C6F0E93B58",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Creator plan billed once a year",
+              "description" : "Creator yearly — about 2 months free",
               "displayName" : "Creator Yearly",
               "locale" : "en_US"
             }
@@ -82,14 +82,14 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "9.99",
+          "displayPrice" : "14.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "E5C7A9F1-2D8B-4A6C-9E3F-40B1D7C58A96",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited generations, video, companions",
+              "description" : "Unlimited gens, Video Director with voice, companions",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
@@ -107,14 +107,14 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "79.99",
+          "displayPrice" : "119.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "F2B8D4C0-7A5E-4B3D-8C1F-63E9A0D57B14",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Pro plan billed once a year",
+              "description" : "Pro yearly — best value for Video Director",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }

@@ -405,6 +405,9 @@ async function runVideoGeneration(jobId) {
       imageURL: job.sourceImageURL,
       prompt: job.prompt,
       jobId,
+      spokenLine: job.spokenLine || "",
+      subjectGender: job.subjectGender || "auto",
+      motionStyle: job.motionStyle || "cinematic",
       onProgress: (percent) => updateProgress(jobId, percent)
     });
 

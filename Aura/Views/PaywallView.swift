@@ -413,8 +413,8 @@ struct PaywallView: View {
             .multilineTextAlignment(.center)
 
             HStack(spacing: 18) {
-                Link("Privacy Policy", destination: URL(string: "https://sceneme.app/privacy")!)
-                Link("Terms of Use",   destination: URL(string: "https://sceneme.app/terms")!)
+                Link("Privacy Policy", destination: URL(string: "https://styleia.onrender.com/privacy")!)
+                Link("Terms of Use",   destination: URL(string: "https://styleia.onrender.com/terms")!)
             }
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(SceneMeTheme.subtleText)

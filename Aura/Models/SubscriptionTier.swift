@@ -109,7 +109,7 @@ enum SubscriptionTier: Int, Comparable, Codable {
             proValue: "✓"
         ),
         Feature(
-            title: "Video Director + captions",
+            title: "Video Director + voice & captions",
             freeValue: nil,
             creatorValue: nil,
             proValue: "✓"

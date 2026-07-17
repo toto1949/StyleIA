@@ -68,7 +68,7 @@ struct AnimateDirectorSheet: View {
                 .tracking(2)
                 .foregroundStyle(SceneMeTheme.gold)
 
-            Text("Choose the performance. For Talking, write the line — it becomes the caption.")
+            Text("Choose the performance. For Talking, write the line — we voice it on the clip and show it as a caption.")
                 .font(.system(size: 14))
                 .foregroundStyle(SceneMeTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -162,7 +162,7 @@ struct AnimateDirectorSheet: View {
                 }
             }
 
-            Text("Tip: short lines caption best — under ~80 characters.")
+            Text("Tip: short lines sound and caption best — under ~80 characters.")
                 .font(.system(size: 11))
                 .foregroundStyle(SceneMeTheme.faintText)
         }

@@ -21,7 +21,7 @@ enum VideoMotionStyle: String, Codable, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .cinematic: return "Slow push-in, living editorial"
-        case .talking: return "Interview energy + on-screen caption"
+        case .talking: return "Spoken voice + interview caption"
         case .portrait: return "Near-still beauty breathing shot"
         case .energy: return "Atmosphere-forward scene life"
         }

@@ -105,5 +105,13 @@ export const config = Object.freeze({
   videoNegativePrompt: process.env.STYLEAI_VIDEO_NEGATIVE_PROMPT
     || "blurry, low quality, low resolution, pixelated, noisy, grainy, out of focus, distorted face, face morphing, changing identity, warped features, extra fingers, deformed hands, flickering, jitter, artifacts, watermark, text",
   mockVideoURL: process.env.STYLEAI_MOCK_VIDEO_URL
-    || "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
+    || "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+
+  // Talking Video Director: TTS + mux onto the PixVerse clip (fal.ai).
+  falTtsModel: process.env.FAL_TTS_MODEL || "fal-ai/elevenlabs/tts/turbo-v2.5",
+  falMergeAudioVideoModel: process.env.FAL_MERGE_AUDIO_VIDEO_MODEL
+    || "fal-ai/ffmpeg-api/merge-audio-video",
+  ttsVoiceFemale: process.env.STYLEAI_TTS_VOICE_FEMALE || "Rachel",
+  ttsVoiceMale: process.env.STYLEAI_TTS_VOICE_MALE || "Adam",
+  ttsVoiceDefault: process.env.STYLEAI_TTS_VOICE_DEFAULT || "Aria"
 });

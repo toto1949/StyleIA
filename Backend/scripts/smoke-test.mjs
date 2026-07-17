@@ -153,6 +153,8 @@ if (!video.prompt?.includes("talk-show") && !video.prompt?.includes("mid-convers
 if (!video.prompt?.includes("You're not going to believe this night.")) {
   fail("talking video prompt missing spoken caption line");
 }
+if (video.motionStyle !== "talking") fail(`expected talking motionStyle, got ${video.motionStyle}`);
+if (!video.spokenLine) fail("expected spokenLine on talking video job");
 const videoDone = await waitForJob(video.jobId, token);
 if (!videoDone.videoURL) fail("video job missing videoURL");
 console.log(`video job ok -> ${videoDone.videoURL}`);
@@ -196,5 +198,20 @@ if (history.items.length < 3) fail(`expected >=3 history items, got ${history.it
 const animated = history.items.find((item) => item.jobId === done1.jobId);
 if (!animated?.videoURL) fail("history item missing persisted videoURL");
 console.log("history ok");
+
+// 10. Public legal pages (App Store / IAP requirement)
+const privacy = await fetch(`${base}/privacy`);
+const terms = await fetch(`${base}/terms`);
+if (!privacy.ok) fail(`privacy page -> ${privacy.status}`);
+if (!terms.ok) fail(`terms page -> ${terms.status}`);
+const privacyHTML = await privacy.text();
+const termsHTML = await terms.text();
+if (!privacyHTML.includes("Privacy Policy") || !privacyHTML.includes("SceneMe")) {
+  fail("privacy page missing expected content");
+}
+if (!termsHTML.includes("Terms of Use") || !termsHTML.includes("Subscriptions")) {
+  fail("terms page missing expected content");
+}
+console.log("legal pages ok");
 
 console.log("ALL SMOKE TESTS PASSED");

@@ -97,9 +97,23 @@ export async function generateScene({
 }
 
 /// Animates a completed scene image into a short cinematic video.
-export async function generateSceneVideo({ imageURL, prompt, jobId, onProgress }) {
+/// When Talking + spokenLine are set, synthesizes speech and muxes it onto the clip.
+export async function generateSceneVideo({
+  imageURL,
+  prompt,
+  jobId,
+  onProgress,
+  spokenLine = "",
+  subjectGender = "auto",
+  motionStyle = "cinematic"
+}) {
   if (config.enableMockGeneration) {
-    logFal("mock_video_generation", { jobId, prompt });
+    logFal("mock_video_generation", {
+      jobId,
+      prompt,
+      motionStyle,
+      hasSpokenLine: Boolean(String(spokenLine || "").trim())
+    });
     await mockProgress(onProgress);
     return config.mockVideoURL;
   }
@@ -111,7 +125,16 @@ export async function generateSceneVideo({ imageURL, prompt, jobId, onProgress }
   fal.config({ credentials: config.falKey });
 
   try {
-    return await runVideoRequest({ imageURL, prompt, jobId, onProgress });
+    let videoURL = await runVideoRequest({ imageURL, prompt, jobId, onProgress });
+    videoURL = await maybeAttachTalkingAudio({
+      videoURL,
+      spokenLine,
+      subjectGender,
+      motionStyle,
+      jobId,
+      onProgress
+    });
+    return videoURL;
   } catch (error) {
     const operationalError = normalizeFalOperationalError(error);
 
@@ -125,11 +148,113 @@ export async function generateSceneVideo({ imageURL, prompt, jobId, onProgress }
       // Retry without optional tuning params in case the configured model
       // doesn't support duration/resolution inputs.
       logFal("video_retry_minimal_input", { jobId });
-      return await runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode: true });
+      let videoURL = await runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode: true });
+      videoURL = await maybeAttachTalkingAudio({
+        videoURL,
+        spokenLine,
+        subjectGender,
+        motionStyle,
+        jobId,
+        onProgress
+      });
+      return videoURL;
     }
 
     throw operationalError;
   }
+}
+
+/// For Talking clips with a spoken line: TTS → merge audio onto the silent video.
+/// Failures are logged and the silent video is returned so animate still succeeds.
+async function maybeAttachTalkingAudio({
+  videoURL,
+  spokenLine,
+  subjectGender,
+  motionStyle,
+  jobId,
+  onProgress
+}) {
+  const line = String(spokenLine || "").trim();
+  if (normalizeMotionStyleLocal(motionStyle) !== "talking" || !line) {
+    return videoURL;
+  }
+
+  try {
+    onProgress?.(82);
+    const audioURL = await synthesizeSpeech({ text: line, subjectGender, jobId });
+    onProgress?.(90);
+    const mergedURL = await mergeAudioOntoVideo({ videoURL, audioURL, jobId });
+    onProgress?.(95);
+    return mergedURL || videoURL;
+  } catch (error) {
+    logFal("talking_audio_failed", { jobId, ...serializeFalError(error) });
+    return videoURL;
+  }
+}
+
+async function synthesizeSpeech({ text, subjectGender, jobId }) {
+  const voice = voiceForGender(subjectGender);
+  logFal("tts_start", { jobId, model: config.falTtsModel, voice, chars: text.length });
+
+  const result = await fal.subscribe(config.falTtsModel, {
+    input: {
+      text,
+      voice
+    },
+    logs: true
+  });
+
+  const audioURL = extractAudioURL(result?.data ?? result);
+  if (!audioURL) {
+    throw new Error("fal.ai TTS result did not include an audio URL.");
+  }
+
+  logFal("tts_complete", { jobId, audioHost: safeHost(audioURL) });
+  return audioURL;
+}
+
+async function mergeAudioOntoVideo({ videoURL, audioURL, jobId }) {
+  logFal("audio_merge_start", {
+    jobId,
+    model: config.falMergeAudioVideoModel,
+    videoHost: safeHost(videoURL),
+    audioHost: safeHost(audioURL)
+  });
+
+  const result = await fal.subscribe(config.falMergeAudioVideoModel, {
+    input: {
+      video_url: videoURL,
+      audio_url: audioURL,
+      start_offset: 0.15
+    },
+    logs: true
+  });
+
+  const mergedURL = extractVideoURL(result?.data ?? result);
+  if (!mergedURL) {
+    throw new Error("fal.ai audio merge did not include a video URL.");
+  }
+
+  logFal("audio_merge_complete", { jobId, videoHost: safeHost(mergedURL) });
+  return mergedURL;
+}
+
+function voiceForGender(gender) {
+  const normalized = String(gender || "").trim().toLowerCase();
+  if (normalized === "male") {
+    return config.ttsVoiceMale;
+  }
+  if (normalized === "female") {
+    return config.ttsVoiceFemale;
+  }
+  return config.ttsVoiceDefault;
+}
+
+function normalizeMotionStyleLocal(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["cinematic", "talking", "portrait", "energy"].includes(normalized)
+    ? normalized
+    : "cinematic";
 }
 
 async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode = false }) {
@@ -280,6 +405,10 @@ function extractImageURL(result) {
 
 function extractVideoURL(result) {
   return result?.video?.url || result?.videos?.[0]?.url || "";
+}
+
+function extractAudioURL(result) {
+  return result?.audio?.url || result?.audio_url || result?.audio?.file?.url || "";
 }
 
 function normalizeFalOperationalError(error) {

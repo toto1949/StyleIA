@@ -26,8 +26,6 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>SceneMe uses your camera to capture photos for scene generation.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>SceneMe saves your generated scenes and postcards to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
