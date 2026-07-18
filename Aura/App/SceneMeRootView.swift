@@ -62,6 +62,9 @@ struct SceneMeRootView: View {
         .task {
             await viewModel.refreshScenes()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .sceneMeOpenReadyClip)) { notification in
+            viewModel.openClipFromNotification(userInfo: notification.userInfo)
+        }
     }
 
     @ViewBuilder
