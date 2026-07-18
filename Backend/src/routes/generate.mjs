@@ -365,8 +365,14 @@ async function runSceneGeneration(jobId) {
         prompt: job.prompt,
         seed: job.seed,
         jobId,
-        cachedFalImageURL: await freshFalCdnURL(job),
-        onFalImageUploaded: (url) => rememberFalCdnURL(job, url),
+        cachedFalImageURL: await freshFalCdnURL(job.userId, job.s3Key),
+        cachedCompanionFalImageURL: job.companionS3Key
+          ? await freshFalCdnURL(job.userId, job.companionS3Key)
+          : null,
+        onFalImageUploaded: (url) => rememberFalCdnURL(job.userId, job.s3Key, url),
+        onCompanionFalImageUploaded: job.companionS3Key
+          ? (url) => rememberFalCdnURL(job.userId, job.companionS3Key, url)
+          : undefined,
         onProgress: (percent) => updateProgress(jobId, percent)
       });
     }
@@ -481,14 +487,14 @@ async function findReusableResult(job) {
   ) || null;
 }
 
-async function freshFalCdnURL(job) {
-  if (job.companionLocalPath) {
+async function freshFalCdnURL(userId, s3Key) {
+  if (!s3Key) {
     return null;
   }
 
   const data = await store.snapshot();
   const upload = data.uploads.find(
-    (candidate) => candidate.userId === job.userId && candidate.s3Key === job.s3Key
+    (candidate) => candidate.userId === userId && candidate.s3Key === s3Key
   );
 
   return upload && upload.falImageURL && isFalCdnURLFresh(upload.falUploadedAt)
@@ -496,10 +502,14 @@ async function freshFalCdnURL(job) {
     : null;
 }
 
-async function rememberFalCdnURL(job, url) {
+async function rememberFalCdnURL(userId, s3Key, url) {
+  if (!s3Key || !url) {
+    return;
+  }
+
   await store.mutate(async (data) => {
     const upload = data.uploads.find(
-      (candidate) => candidate.userId === job.userId && candidate.s3Key === job.s3Key
+      (candidate) => candidate.userId === userId && candidate.s3Key === s3Key
     );
     if (upload) {
       upload.falImageURL = url;

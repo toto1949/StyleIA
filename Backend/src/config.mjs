@@ -81,9 +81,16 @@ export const config = Object.freeze({
     .filter(Boolean),
   falKey: process.env.FAL_KEY || "",
   falModel: process.env.FAL_MODEL || "fal-ai/flux-pro/kontext",
+  // Companion (friend/pet): pro multi is ~$0.04 vs max/multi ~$0.08. Override with
+  // fal-ai/flux-pro/kontext/max/multi only if A/B shows face lock needs it.
+  falMultiModel: process.env.FAL_MULTI_MODEL || "fal-ai/flux-pro/kontext/multi",
   // Force a consistent vertical editorial frame regardless of the shape of
   // the user's uploaded photo — full-body head-to-shoes compositions need it.
   falImageAspectRatio: process.env.STYLEAI_IMAGE_ASPECT_RATIO || "9:16",
+  // Solo Kontext is priced per image — higher steps improve fidelity at no extra $.
+  falKontextSteps: number(process.env.FAL_KONTEXT_NUM_INFERENCE_STEPS, 36),
+  falKontextGuidance: number(process.env.FAL_KONTEXT_GUIDANCE_SCALE, 3.75),
+  falMultiGuidance: number(process.env.FAL_MULTI_GUIDANCE_SCALE, 4.5),
   enableMockGeneration: bool(process.env.STYLEAI_ENABLE_MOCK_GENERATION, false),
   fallbackToMockOnFalBilling: bool(process.env.STYLEAI_FAL_FALLBACK_TO_MOCK_ON_BILLING, false),
 
@@ -97,13 +104,15 @@ export const config = Object.freeze({
   reuseIdenticalResults: bool(process.env.STYLEAI_REUSE_IDENTICAL_RESULTS, true),
 
   // Video generation (PixVerse is currently the cheapest image-to-video on fal:
-  // ~$0.025/s at 360p, ~$0.045/s at 720p).
+  // ~$0.025/s at 360p, ~$0.035/s at 540p, ~$0.045/s at 720p).
   falVideoModel: process.env.FAL_VIDEO_MODEL || "fal-ai/pixverse/v6/image-to-video",
   videoDurationSeconds: number(process.env.STYLEAI_VIDEO_DURATION_SECONDS, 5),
   videoResolution: process.env.STYLEAI_VIDEO_RESOLUTION
     || (bool(process.env.STYLEAI_ECO_MODE, false) ? "360p" : "720p"),
+  // Keep our crafted face-lock prompts intact (same idea as enhance_prompt=false).
+  videoThinkingType: process.env.STYLEAI_VIDEO_THINKING_TYPE || "disabled",
   videoNegativePrompt: process.env.STYLEAI_VIDEO_NEGATIVE_PROMPT
-    || "blurry, low quality, low resolution, pixelated, noisy, grainy, out of focus, distorted face, face morphing, changing identity, warped features, extra fingers, deformed hands, flickering, jitter, artifacts, watermark, text",
+    || "blurry, low quality, low resolution, pixelated, noisy, grainy, out of focus, distorted face, face morphing, changing identity, warped features, melted face, asymmetric eyes, extra fingers, deformed hands, flickering, jitter, temporal artifacts, watermark, text overlay, logo",
   mockVideoURL: process.env.STYLEAI_MOCK_VIDEO_URL
     || "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
 

@@ -66,10 +66,13 @@ export const allowedWeather = Object.keys(weatherMap);
 export const allowedPoses = Object.keys(poseMap);
 
 const REALISM_SENTENCE =
-  "Photorealistic full-frame photograph, 50mm lens at f/2.8: natural skin texture with visible pores, true-to-photo skin tone, anatomically correct hands with five fingers each, natural body proportions, sharp focus on the faces, cinematic color grading.";
+  "Photorealistic full-frame photograph, 50mm lens at f/2.8: natural skin texture with visible pores, true-to-photo skin tone, anatomically correct hands with five fingers each, natural body proportions, sharp focus on the faces, fine fabric weave, clean edges, cinematic color grading without plastic HDR.";
 
 const ANTI_BEAUTIFY =
   "Keep every unique and imperfect detail exactly as photographed — do not beautify, smooth, slim, retouch, de-age, reshape or idealize the face or body, and do not replace anyone with a generic attractive model.";
+
+const LIGHTING_LOCK =
+  "Match lighting direction and color temperature to the scene so skin, fabric and environment share one coherent light; avoid flat studio fill or mismatched face lighting.";
 
 export function buildPrompt({
   scene,
@@ -122,6 +125,8 @@ function buildSoloPrompt({ scene, timeOfDay, weather, pose, subjectGender, rerol
 
     "Full-body vertical composition with the subject as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
 
+    LIGHTING_LOCK,
+
     REALISM_SENTENCE
   ];
 
@@ -142,7 +147,7 @@ function buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender, rer
   const sentences = [
     "This is a multi-image identity edit using two reference photos.",
 
-    `Image 1 is the primary ${primaryNoun === "person" ? "person" : primaryNoun}; Image 2 is their friend. Keep each face locked to its own source photo.`,
+    `Image 1 is the primary ${primaryNoun === "person" ? "person" : primaryNoun}; Image 2 is their friend. Keep each face locked to its own source photo — same bone structure, eye spacing, nose, lips, skin tone and hairline.`,
 
     `Place the exact same person from Image 1 and the exact same person from Image 2 together ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
 
@@ -154,9 +159,11 @@ function buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender, rer
 
     ANTI_BEAUTIFY,
 
-    "Exactly two people appear in the frame. The person on the viewer's left or as the primary subject comes only from Image 1; the other person comes only from Image 2. Both are fully visible, standing a natural distance apart — never merge them into one face or body.",
+    "Exactly two people appear in the frame. The person on the viewer's left or as the primary subject comes only from Image 1; the other person comes only from Image 2. Both are fully visible, standing a natural distance apart — never merge them into one face or body, never average their features.",
 
     "Full-body vertical composition with both people sharing the focal point, both visible from head to shoes, all feet and footwear inside the frame, camera at chest height.",
+
+    LIGHTING_LOCK,
 
     REALISM_SENTENCE
   ];
@@ -192,6 +199,8 @@ function buildPetPrompt({ scene, timeOfDay, weather, pose, subjectGender, reroll
     "Exactly one person and one pet appear in the scene.",
 
     "Full-body vertical composition with the person as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
+
+    LIGHTING_LOCK,
 
     REALISM_SENTENCE
   ];
@@ -251,7 +260,9 @@ export function buildVideoPrompt({
   const ambient = ambientMotion[weather] || ambientMotion.sunny;
   const time = timeMotion[timeOfDay] || timeMotion.golden_hour;
   const identity =
-    "Critically important face lock: keep the exact same face geometry, skin texture, pores, eye shape, brows, nose, mouth, jawline, cheekbones, hairline and identity from the input photo in every frame — sharp, stable, photorealistic, no beautify morph, no identity drift.";
+    "Critically important face lock: keep the exact same face geometry, skin texture, pores, eye shape, brows, nose, mouth, jawline, cheekbones, hairline and identity from the input photo in every frame — sharp, stable, photorealistic, no beautify morph, no identity drift, no face warping between frames.";
+  const temporal =
+    "Temporal consistency: facial landmarks stay locked frame-to-frame; motion is smooth with no flicker, stutter, melting features or sudden identity changes.";
   const directionSentence = direction
     ? `User direction for the performance (follow without changing the face or outfit): ${direction}.`
     : "";
@@ -273,7 +284,8 @@ export function buildVideoPrompt({
       `Around them, ${ambient}, with ${time}.`,
       "Camera work: locked-off or very slow subtle push-in, broadcast-interview framing, no whip pans, no cuts.",
       caption,
-      identity
+      identity,
+      temporal
     ].filter(Boolean).join(" ");
   }
 
@@ -284,7 +296,8 @@ export function buildVideoPrompt({
       directionSentence,
       `Hair and fabric move only slightly. Around them, ${ambient}, with ${time}.`,
       "Camera work: extremely slow, elegant push-in, shallow depth of field, beauty-editorial stillness.",
-      identity
+      identity,
+      temporal
     ].filter(Boolean).join(" ");
   }
 
@@ -295,7 +308,8 @@ export function buildVideoPrompt({
       directionSentence,
       `Around them, ${ambient}, with ${time}, plus richer environmental life — distant figures, light flicker, air and atmosphere moving with realistic physics.`,
       "Camera work: smooth cinematic drift or gentle orbiting push, stabilized, no cuts.",
-      identity
+      identity,
+      temporal
     ].filter(Boolean).join(" ");
   }
 
@@ -313,7 +327,8 @@ export function buildVideoPrompt({
     `Around them, ${ambient}, with ${time}.`,
     "The background breathes with subtle life — distant figures, light and atmosphere shifting naturally, realistic physics.",
     "Camera work: one slow, smooth stabilized push-in toward the subject, no cuts, no whip pans, shallow cinematic depth of field.",
-    identity
+    identity,
+    temporal
   ].filter(Boolean).join(" ");
 }
 
