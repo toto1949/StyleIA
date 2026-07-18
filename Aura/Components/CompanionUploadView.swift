@@ -62,6 +62,21 @@ struct CompanionUploadView: View {
                     Spacer()
                 }
 
+                if companionKind.wrappedValue == .friend {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("FRIEND'S GENDER")
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(1.6)
+                            .foregroundStyle(SceneMeTheme.faintText)
+
+                        HStack(spacing: 8) {
+                            ForEach(SubjectGender.allCases) { gender in
+                                companionGenderChip(gender)
+                            }
+                        }
+                    }
+                }
+
                 let hasPhoto = viewModel.companionPhoto != nil
                 PhotosPicker(selection: $viewModel.companionItem, matching: .images) {
                     HStack(spacing: 8) {
@@ -124,6 +139,34 @@ struct CompanionUploadView: View {
             .foregroundStyle(isSelected ? Color.black.opacity(0.88) : SceneMeTheme.subtleText)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
+            .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.surface)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule().stroke(isSelected ? Color.clear : SceneMeTheme.hairline, lineWidth: 1)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(SceneMePressButtonStyle())
+    }
+
+    private func companionGenderChip(_ gender: SubjectGender) -> some View {
+        let isSelected = (viewModel.request?.companionGender ?? .auto) == gender
+
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                viewModel.request?.companionGender = gender
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(gender.emoji)
+                    .font(.system(size: 12))
+                Text(gender.title.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.1)
+            }
+            .foregroundStyle(isSelected ? Color.black.opacity(0.88) : SceneMeTheme.subtleText)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
             .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.surface)
             .clipShape(Capsule())
             .overlay {

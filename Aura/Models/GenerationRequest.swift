@@ -159,6 +159,8 @@ struct GenerationRequest: Equatable {
     var subjectGender: SubjectGender
     var hasCompanion: Bool
     var companionKind: CompanionKind
+    /// Gender of the friend photo (ignored for pets). Prevents male+male → male+female flips.
+    var companionGender: SubjectGender
 
     init(scene: SceneTemplate) {
         self.scene = scene
@@ -168,6 +170,7 @@ struct GenerationRequest: Equatable {
         self.subjectGender = .auto
         self.hasCompanion = false
         self.companionKind = .friend
+        self.companionGender = .auto
     }
 
     /// Human readable summary shown in the "Your scene preview" footer.
@@ -181,7 +184,13 @@ struct GenerationRequest: Equatable {
                 : "outfit styled for a \(subjectGender.title.lowercased())"
         ]
         if hasCompanion {
-            parts.append(companionKind == .pet ? "with your pet" : "with a friend")
+            if companionKind == .pet {
+                parts.append("with your pet")
+            } else if companionGender == .auto {
+                parts.append("with a friend")
+            } else {
+                parts.append("with a \(companionGender.title.lowercased()) friend")
+            }
         }
         return parts.joined(separator: ", ") + "…"
     }
