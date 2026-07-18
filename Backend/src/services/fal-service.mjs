@@ -13,9 +13,6 @@ export class FalBillingError extends Error {
   }
 }
 
-// Multi-image kontext variant used when a companion photo is attached.
-const MULTI_IMAGE_MODEL = process.env.FAL_MULTI_MODEL || "fal-ai/flux-pro/kontext/max/multi";
-
 // How long an uploaded fal CDN URL stays reusable (uploads expire after 1 day).
 const FAL_CDN_REUSE_MS = 20 * 60 * 60 * 1000;
 
@@ -41,7 +38,9 @@ export async function generateScene({
   seed,
   jobId,
   cachedFalImageURL = null,
+  cachedCompanionFalImageURL = null,
   onFalImageUploaded,
+  onCompanionFalImageUploaded,
   onProgress
 }) {
   if (config.enableMockGeneration) {
@@ -59,17 +58,29 @@ export async function generateScene({
   try {
     let userImageURL = cachedFalImageURL;
     if (userImageURL) {
-      logFal("upload_reused_cdn_url", { jobId, imageHost: safeHost(userImageURL) });
+      logFal("upload_reused_cdn_url", { jobId, role: "subject", imageHost: safeHost(userImageURL) });
     } else {
-      logFal("upload_start", { jobId, contentType, hasCompanion: Boolean(companionPath) });
+      logFal("upload_start", { jobId, role: "subject", contentType, hasCompanion: Boolean(companionPath) });
       userImageURL = await uploadToFalCdn({ imagePath, contentType });
       await onFalImageUploaded?.(userImageURL);
-      logFal("upload_complete", { jobId, imageHost: safeHost(userImageURL) });
+      logFal("upload_complete", { jobId, role: "subject", imageHost: safeHost(userImageURL) });
     }
 
-    const companionImageURL = companionPath
-      ? await uploadToFalCdn({ imagePath: companionPath, contentType: companionContentType })
-      : null;
+    let companionImageURL = null;
+    if (companionPath) {
+      companionImageURL = cachedCompanionFalImageURL;
+      if (companionImageURL) {
+        logFal("upload_reused_cdn_url", { jobId, role: "companion", imageHost: safeHost(companionImageURL) });
+      } else {
+        logFal("upload_start", { jobId, role: "companion", contentType: companionContentType });
+        companionImageURL = await uploadToFalCdn({
+          imagePath: companionPath,
+          contentType: companionContentType
+        });
+        await onCompanionFalImageUploaded?.(companionImageURL);
+        logFal("upload_complete", { jobId, role: "companion", imageHost: safeHost(companionImageURL) });
+      }
+    }
     onProgress?.(20);
 
     const imageURL = await runFalRequestWithFallback({
@@ -317,6 +328,10 @@ async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode =
     // PixVerse supports negative prompts (unlike Kontext) — use one to fight
     // the classic image-to-video failure modes: face morphing and flicker.
     input.negative_prompt = config.videoNegativePrompt;
+    // Don't let PixVerse rewrite our face-lock / lip-sync instructions.
+    if (config.videoThinkingType) {
+      input.thinking_type = config.videoThinkingType;
+    }
   }
 
   logFal("video_start", {
@@ -324,6 +339,7 @@ async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode =
     model: config.falVideoModel,
     duration: config.videoDurationSeconds,
     resolution: config.videoResolution,
+    thinkingType: config.videoThinkingType || null,
     safeMode
   });
 
@@ -350,29 +366,40 @@ async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode =
   return videoURL;
 }
 
-async function runFalRequest({ prompt, userImageURL, companionImageURL, seed, jobId, onProgress, safeMode = false }) {
+/// paramMode:
+///   full     — steps (solo) + guidance + aspect + enhance_prompt=false
+///   reduced  — keep quality-critical params, drop steps (schema-safe for multi)
+///   minimal  — prompt + images only (last resort after ValidationError)
+async function runFalRequest({
+  prompt,
+  userImageURL,
+  companionImageURL,
+  seed,
+  jobId,
+  onProgress,
+  paramMode = "full"
+}) {
   const isMulti = Boolean(companionImageURL);
-  const model = isMulti ? MULTI_IMAGE_MODEL : imageModel();
+  const model = isMulti ? config.falMultiModel : imageModel();
 
   const input = isMulti
     ? { image_urls: [userImageURL, companionImageURL], prompt }
     : { image_url: userImageURL, prompt };
 
-  if (!safeMode) {
+  if (paramMode !== "minimal") {
     // Never let fal rewrite our carefully crafted identity locks.
     input.enhance_prompt = false;
     // Vertical editorial frame for head-to-shoes compositions.
     input.aspect_ratio = config.falImageAspectRatio;
-    // Multi-image Kontext Max rejects num_inference_steps (not in its schema).
-    // Sending it triggers ValidationError → safeMode fallback, which drops
-    // aspect_ratio/guidance and tanks companion quality. Only send steps on solo.
-    if (!isMulti) {
-      input.num_inference_steps = kontextSteps();
-    }
     // Slightly stronger guidance on multi so both faces stay locked to sources.
-    input.guidance_scale = isMulti ? multiGuidanceScale() : kontextGuidanceScale();
+    input.guidance_scale = isMulti ? config.falMultiGuidance : config.falKontextGuidance;
     if (Number.isFinite(seed)) {
       input.seed = seed;
+    }
+    // Multi-image Kontext endpoints reject num_inference_steps (not in schema).
+    // Sending it triggers ValidationError → quality drop. Only send steps on solo.
+    if (!isMulti && paramMode === "full") {
+      input.num_inference_steps = config.falKontextSteps;
     }
   }
 
@@ -380,7 +407,7 @@ async function runFalRequest({ prompt, userImageURL, companionImageURL, seed, jo
     jobId,
     model,
     isMulti,
-    safeMode,
+    paramMode,
     guidance: input.guidance_scale ?? null,
     aspectRatio: input.aspect_ratio ?? null,
     steps: input.num_inference_steps ?? null
@@ -412,7 +439,7 @@ async function runFalRequest({ prompt, userImageURL, companionImageURL, seed, jo
 
 async function runFalRequestWithFallback(args) {
   try {
-    return await runFalRequest(args);
+    return await runFalRequest({ ...args, paramMode: "full" });
   } catch (error) {
     const operationalError = normalizeFalOperationalError(error);
     logFal("scene_error", { jobId: args.jobId, ...serializeFalError(operationalError) });
@@ -421,8 +448,19 @@ async function runFalRequestWithFallback(args) {
       throw operationalError;
     }
 
-    logFal("scene_retry_minimal_input", { jobId: args.jobId });
-    return await runFalRequest({ ...args, safeMode: true });
+    // Prefer reduced (keep aspect/guidance) before bare minimal — avoids the
+    // old safeMode path that silently tanked companion quality.
+    try {
+      logFal("scene_retry_reduced_input", { jobId: args.jobId });
+      return await runFalRequest({ ...args, paramMode: "reduced" });
+    } catch (reducedError) {
+      const reducedOperational = normalizeFalOperationalError(reducedError);
+      if (reducedOperational?.name !== "ValidationError") {
+        throw reducedOperational;
+      }
+      logFal("scene_retry_minimal_input", { jobId: args.jobId });
+      return await runFalRequest({ ...args, paramMode: "minimal" });
+    }
   }
 }
 
@@ -487,24 +525,6 @@ function isFalBillingError(error) {
     text.includes("top up") ||
     text.includes("billing")
   );
-}
-
-function kontextSteps() {
-  return numberFromEnv("FAL_KONTEXT_NUM_INFERENCE_STEPS", 28);
-}
-
-function kontextGuidanceScale() {
-  return numberFromEnv("FAL_KONTEXT_GUIDANCE_SCALE", 3.5);
-}
-
-/// Multi-image face locking benefits from a touch more prompt adherence.
-function multiGuidanceScale() {
-  return numberFromEnv("FAL_MULTI_GUIDANCE_SCALE", 4.0);
-}
-
-function numberFromEnv(key, fallback) {
-  const parsed = Number(process.env[key]);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function logFal(event, details = {}) {

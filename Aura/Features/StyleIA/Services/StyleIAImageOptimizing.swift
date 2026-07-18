@@ -14,9 +14,10 @@ nonisolated struct StyleIAImageOptimizationSettings: Equatable, Sendable {
 
     static let `default` = StyleIAImageOptimizationSettings(
         maxLongEdge: 2048,
-        targetMaxBytes: 2_500_000,
-        initialJPEGQuality: 0.86,
-        minimumJPEGQuality: 0.68,
+        // Keep more detail for Kontext face lock; fal charges per image, not upload size.
+        targetMaxBytes: 3_000_000,
+        initialJPEGQuality: 0.90,
+        minimumJPEGQuality: 0.74,
         darkImageBrightnessThreshold: 0.28,
         exposureEV: 0.22
     )

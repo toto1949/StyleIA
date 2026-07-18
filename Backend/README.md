@@ -32,9 +32,14 @@ On a physical iPhone, replace `localhost` with your Mac's LAN IP and set `PUBLIC
 - `APPLE_CLIENT_ID`: the Sign in with Apple audience. For this app it should match the configured app/service identifier, for example `com.sceneme.app`.
 - `GOOGLE_CLIENT_ID`: the Google OAuth iOS client ID (ends with `.apps.googleusercontent.com`). Must match `GIDClientID` in the iOS app.
 - `FAL_KEY`: server-side fal.ai API key. Never put this in the iOS app.
-- `FAL_MODEL`: defaults to `fal-ai/flux-pro/kontext`.
-- `FAL_KONTEXT_NUM_INFERENCE_STEPS`: optional Kontext step count. Defaults to `28`.
-- `FAL_KONTEXT_GUIDANCE_SCALE`: optional Kontext guidance scale. Defaults to `3.5`.
+- `FAL_MODEL`: defaults to `fal-ai/flux-pro/kontext` (~$0.04/image).
+- `FAL_MULTI_MODEL`: companion path; defaults to `fal-ai/flux-pro/kontext/multi` (~$0.04). Use `…/max/multi` (~$0.08) only if needed.
+- `FAL_KONTEXT_NUM_INFERENCE_STEPS`: solo step count. Defaults to `36` (pro is priced per image).
+- `FAL_KONTEXT_GUIDANCE_SCALE`: solo guidance. Defaults to `3.75`.
+- `FAL_MULTI_GUIDANCE_SCALE`: companion guidance. Defaults to `4.5`.
+- `STYLEAI_REUSE_IDENTICAL_RESULTS`: reuse completed identical photo+prompt jobs (default `true`).
+- `STYLEAI_ECO_MODE`: cheaper/lower-quality path — leave `false` in production.
+- `STYLEAI_VIDEO_RESOLUTION`: `360p` / `540p` / `720p` / `1080p` (default `720p`).
 - `STYLEAI_ENABLE_MOCK_GENERATION`: set to `true` to skip fal.ai entirely for local UI testing.
 - `STYLEAI_FAL_FALLBACK_TO_MOCK_ON_BILLING`: set to `true` to return mock looks when fal.ai returns a billing/balance lock during local QA.
 
