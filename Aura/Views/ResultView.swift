@@ -18,8 +18,6 @@ struct ResultView: View {
     /// Fit mode shows the entire image (uncropped) and hides the controls.
     @State private var showFullImage = false
     @State private var hasAppeared = false
-    @State private var zoomScale: CGFloat = 1
-    @State private var steadyZoom: CGFloat = 1
 
     var body: some View {
         Group {
@@ -169,40 +167,39 @@ struct ResultView: View {
     private func fullScreenImage(for result: GenerationResult) -> some View {
         GeometryReader { proxy in
             ZStack {
-                if let image = displayedUIImage {
-                    if showFullImage {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                    } else {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
+                ZoomableScrollView(
+                    onSingleTap: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            showFullImage.toggle()
+                        }
                     }
-                } else {
-                    AsyncImage(url: result.imageURL) { phase in
-                        if case .success(let image) = phase {
-                            image
+                ) {
+                    Group {
+                        if let image = displayedUIImage {
+                            Image(uiImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: showFullImage ? .fit : .fill)
+                                .frame(width: proxy.size.width, height: proxy.size.height)
                         } else {
-                            ZStack {
-                                SceneMeTheme.surface
-                                ProgressView()
-                                    .tint(SceneMeTheme.gold)
+                            AsyncImage(url: result.imageURL) { phase in
+                                if case .success(let image) = phase {
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: showFullImage ? .fit : .fill)
+                                        .frame(width: proxy.size.width, height: proxy.size.height)
+                                } else {
+                                    ZStack {
+                                        SceneMeTheme.surface
+                                        ProgressView()
+                                            .tint(SceneMeTheme.gold)
+                                    }
+                                    .frame(width: proxy.size.width, height: proxy.size.height)
+                                }
                             }
                         }
                     }
                 }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
-            .scaleEffect(zoomScale)
-            .gesture(zoomGesture)
-            .onTapGesture {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    showFullImage.toggle()
-                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
             .overlay {
                 // Always-on editorial signature — reads in screenshots & screen recordings.
@@ -212,6 +209,7 @@ struct ResultView: View {
                 )
                 .padding(.top, showFullImage ? 0 : 56)
                 .padding(.bottom, showFullImage ? 36 : 0)
+                .allowsHitTesting(false)
             }
             .overlay {
                 if viewModel.isRerolling {
@@ -237,7 +235,7 @@ struct ResultView: View {
                                 Text("Animating in the background…")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(SceneMeTheme.text)
-                                Text("Feel free to browse — we’ll notify you when it’s ready.")
+                                Text("Feel free to browse — you’ll get a notification when it’s ready.")
                                     .font(.system(size: 11))
                                     .foregroundStyle(SceneMeTheme.subtleText)
                             }
@@ -260,25 +258,9 @@ struct ResultView: View {
         .ignoresSafeArea()
     }
 
-    private var zoomGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { value in
-                zoomScale = min(max(steadyZoom * value, 1), 4)
-            }
-            .onEnded { _ in
-                steadyZoom = zoomScale
-                if zoomScale < 1.05 {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        zoomScale = 1
-                        steadyZoom = 1
-                    }
-                }
-            }
-    }
-
     /// Caption shown in full-image mode.
     private var fullImageHint: some View {
-        Text("Tap to return")
+        Text("Pinch to zoom · double-tap · tap to return")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(SceneMeTheme.subtleText)
             .padding(.horizontal, 14)

@@ -544,21 +544,17 @@ final class SceneMeViewModel: ObservableObject {
                     persistence.saveHistory(history)
                 }
                 notice = "Your \(motionStyle.title.lowercased()) clip is ready."
-                // Stay on Result → open the player. Left for Profile/settings →
-                // notify so they can come back without being interrupted mid-tap.
+                // Always fire a real system notification (banner + sound), even
+                // while browsing Profile — not just the in-app toast title.
+                SceneMeNotifications.notifyClipReady(
+                    sceneName: result.sceneName,
+                    styleTitle: motionStyle.title,
+                    resultId: updated.id,
+                    force: true
+                )
                 if flow == .result {
                     presentVideoPlayer = true
-                    SceneMeNotifications.notifyClipReady(
-                        sceneName: result.sceneName,
-                        styleTitle: motionStyle.title,
-                        force: false
-                    )
-                } else {
-                    SceneMeNotifications.notifyClipReady(
-                        sceneName: result.sceneName,
-                        styleTitle: motionStyle.title,
-                        force: true
-                    )
+                    SceneMeNotifications.clearBadge()
                 }
             } catch is CancellationError {
                 // User left the screen; nothing to surface.
@@ -572,6 +568,31 @@ final class SceneMeViewModel: ObservableObject {
             if session?.userId == ownerUserId {
                 isAnimating = false
             }
+        }
+    }
+
+    /// Opens the finished clip when the user taps the system notification.
+    func openClipFromNotification(userInfo: [AnyHashable: Any]?) {
+        SceneMeNotifications.clearBadge()
+        guard isAuthenticated else { return }
+
+        let resultId = userInfo?["resultId"] as? String
+        if let resultId,
+           let match = history.first(where: { $0.id == resultId }),
+           let clip = match.videoClips.first {
+            currentResult = match
+            currentJobId = match.id
+            playingVideoClip = clip
+            move(to: .result)
+            presentVideoPlayer = true
+            return
+        }
+
+        if let result = currentResult,
+           let clip = playingVideoClip ?? result.videoClips.first {
+            playingVideoClip = clip
+            move(to: .result)
+            presentVideoPlayer = true
         }
     }
 
