@@ -57,6 +57,7 @@ export async function rerollSceneJob(request, response, sourceJobId) {
     customScene: source.customScene || null,
     subjectGender: source.subjectGender,
     companionKind: source.companionKind,
+    companionGender: source.companionGender,
     timeOfDay: source.timeOfDay,
     weather: source.weather,
     pose: source.pose
@@ -117,7 +118,11 @@ export async function createVideoJob(request, response, sourceJobId) {
     pose: source.pose,
     motionStyle,
     spokenLine,
-    directionNote
+    directionNote,
+    hasCompanion: Boolean(source.companionS3Key),
+    companionKind: source.companionKind || "friend",
+    subjectGender: source.subjectGender || "auto",
+    companionGender: source.companionGender || "auto"
   });
 
   const job = await store.mutate(async (current) => {
@@ -222,8 +227,22 @@ async function insertSceneJob(userId, body, { reroll }) {
   const pose = normalizePose(body.pose);
   const hasCompanion = Boolean(companionS3Key);
   const companionKind = normalizeCompanionKind(body.companionKind);
+  // Friend gender is required for correct same-sex pairing; pets ignore this.
+  const companionGender = companionKind === "pet"
+    ? "auto"
+    : normalizeSubjectGender(body.companionGender);
 
-  const prompt = buildPrompt({ scene, timeOfDay, weather, pose, subjectGender, hasCompanion, companionKind, reroll });
+  const prompt = buildPrompt({
+    scene,
+    timeOfDay,
+    weather,
+    pose,
+    subjectGender,
+    hasCompanion,
+    companionKind,
+    companionGender,
+    reroll
+  });
   const seed = Number.isFinite(Number(body.seed))
     ? Number(body.seed)
     : Math.floor(Math.random() * 1_000_000_000);
@@ -263,6 +282,7 @@ async function insertSceneJob(userId, body, { reroll }) {
         : null,
       subjectGender,
       companionKind,
+      companionGender,
       timeOfDay,
       weather,
       pose,
@@ -483,6 +503,9 @@ async function findReusableResult(job) {
     Boolean(candidate.imageURL) &&
     candidate.s3Key === job.s3Key &&
     (candidate.companionS3Key || null) === (job.companionS3Key || null) &&
+    (candidate.companionKind || "friend") === (job.companionKind || "friend") &&
+    (candidate.companionGender || "auto") === (job.companionGender || "auto") &&
+    (candidate.subjectGender || "auto") === (job.subjectGender || "auto") &&
     candidate.prompt === job.prompt
   ) || null;
 }
@@ -554,6 +577,8 @@ function sceneJobResponse(job) {
     sceneName: job.sceneName || "",
     sceneLocation: job.sceneLocation || "",
     subjectGender: job.subjectGender || "auto",
+    companionKind: job.companionKind || null,
+    companionGender: job.companionGender || "auto",
     timeOfDay: job.timeOfDay,
     weather: job.weather,
     pose: job.pose,

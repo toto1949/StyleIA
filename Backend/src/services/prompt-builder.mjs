@@ -82,12 +82,22 @@ export function buildPrompt({
   subjectGender = "auto",
   hasCompanion = false,
   companionKind = "friend",
+  companionGender = "auto",
   reroll = false
 }) {
   const gender = normalizeSubjectGender(subjectGender);
+  const friendGender = normalizeSubjectGender(companionGender);
 
   if (hasCompanion && companionKind === "friend") {
-    return buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender: gender, reroll });
+    return buildFriendPrompt({
+      scene,
+      timeOfDay,
+      weather,
+      pose,
+      subjectGender: gender,
+      companionGender: friendGender,
+      reroll
+    });
   }
 
   if (hasCompanion && companionKind === "pet") {
@@ -138,28 +148,34 @@ function buildSoloPrompt({ scene, timeOfDay, weather, pose, subjectGender, rerol
 }
 
 /// Two-person prompt. image_urls arrive as [subject, companion].
-/// Map them explicitly so faces are never swapped or blended.
-function buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender, reroll }) {
+/// Map them explicitly so faces/genders are never swapped or blended.
+function buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender, companionGender, reroll }) {
   const weatherText = weatherTextFor(weather, timeOfDay);
   const primaryNoun = subjectNoun(subjectGender);
-  const outfitTheme = scene.default_outfit;
+  const friendNoun = subjectNoun(companionGender);
+  const primaryOutfit = outfitFor(scene, subjectGender);
+  const friendOutfit = outfitFor(scene, companionGender);
+  const pairing = friendPairingLabel(subjectGender, companionGender);
 
   const sentences = [
     "This is a multi-image identity edit using two reference photos.",
 
-    `Image 1 is the primary ${primaryNoun === "person" ? "person" : primaryNoun}; Image 2 is their friend. Keep each face locked to its own source photo — same bone structure, eye spacing, nose, lips, skin tone and hairline.`,
+    `Image 1 is the primary ${primaryNoun}; Image 2 is their friend, an ${friendNoun === "person" ? "adult person" : friendNoun}. Keep each face locked to its own source photo — same bone structure, eye spacing, nose, lips, skin tone, hairline and apparent gender presentation.`,
 
-    `Place the exact same person from Image 1 and the exact same person from Image 2 together ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+    genderLockSentence(1, subjectGender, primaryNoun),
+    genderLockSentence(2, companionGender, friendNoun),
 
-    `Dress each person individually in clothing from this theme: ${outfitTheme}. Style each outfit to match that person's own gender, body shape and proportions — never force one person's clothing style onto the other. Keep both faces, hairstyles and bodies completely unchanged.`,
+    `Place the exact same ${primaryNoun} from Image 1 and the exact same ${friendNoun === "person" ? "person" : friendNoun} from Image 2 together as ${pairing} ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
 
-    `They stand side by side, close and interacting warmly and naturally, each ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
+    `Dress the person from Image 1 in ${primaryOutfit}. Dress the person from Image 2 in ${friendOutfit}. Each outfit must match that person's own gender presentation, body shape and proportions — never force Image 1's clothing style onto Image 2 or the reverse. Keep both faces, hairstyles, bodies and genders completely unchanged.`,
+
+    `They stand side by side as friends, a natural social distance apart, each ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
 
     friendIdentitySentence(),
 
     ANTI_BEAUTIFY,
 
-    "Exactly two people appear in the frame. The person on the viewer's left or as the primary subject comes only from Image 1; the other person comes only from Image 2. Both are fully visible, standing a natural distance apart — never merge them into one face or body, never average their features.",
+    "Exactly two people appear in the frame — no third person. The primary subject comes only from Image 1; the friend comes only from Image 2. Never merge them into one face or body, never average their features, and never change either person into the opposite gender.",
 
     "Full-body vertical composition with both people sharing the focal point, both visible from head to shoes, all feet and footwear inside the frame, camera at chest height.",
 
@@ -169,7 +185,7 @@ function buildFriendPrompt({ scene, timeOfDay, weather, pose, subjectGender, rer
   ];
 
   if (reroll) {
-    sentences.push("Change only the outfits into a completely different style and color palette than before, while keeping both faces, hairstyles, bodies, poses, the scene and the background exactly the same.");
+    sentences.push("Change only the outfits into a completely different style and color palette than before, while keeping both faces, genders, hairstyles, bodies, poses, the scene and the background exactly the same.");
   }
 
   return sentences.filter(Boolean).join(" ");
@@ -182,21 +198,25 @@ function buildPetPrompt({ scene, timeOfDay, weather, pose, subjectGender, reroll
   const weatherText = weatherTextFor(weather, timeOfDay);
 
   const sentences = [
+    "This is a multi-image identity edit using two reference photos.",
+
     identityLead(subjectGender, noun),
 
-    `Place this exact same ${noun} ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+    "Image 1 is the human subject. Image 2 is their real pet — an animal, not a person.",
 
-    `Dress them in ${outfit}; the clothing fits their real body shape with natural fabric drape, realistic seams and correct proportions. Keep the face, hair, skin and body completely unchanged.`,
+    `Place this exact same ${noun} from Image 1 ${scene.base_prompt}, under ${timeMap[timeOfDay] || timeMap.golden_hour}, with ${weatherText}.`,
+
+    `Dress them in ${outfit}; the clothing fits their real body shape with natural fabric drape, realistic seams and correct proportions. Keep the face, hair, skin, body and gender presentation completely unchanged.`,
 
     `They are ${poseMap[pose] || poseMap.casual}. ${signatureFor(scene)}`.trim(),
 
     identityDetails(subjectGender),
 
-    "Their pet from Image 2 / the second input photo joins them naturally at their side. Keep the pet's species, breed, size, fur color, face and unique markings exactly identical to its photo.",
+    "The pet from Image 2 / the second input photo joins them naturally at their side. Keep the pet's species, breed, size, fur color, face and unique markings exactly identical to its photo. Do not turn the pet into a human, cartoon, or stuffed animal.",
 
     ANTI_BEAUTIFY,
 
-    "Exactly one person and one pet appear in the scene.",
+    "Exactly one person and one pet appear in the scene — never add a second human, and never replace the pet with a person.",
 
     "Full-body vertical composition with the person as the clear focal point, visible from head to shoes, feet and footwear inside the frame, camera at chest height.",
 
@@ -206,7 +226,7 @@ function buildPetPrompt({ scene, timeOfDay, weather, pose, subjectGender, reroll
   ];
 
   if (reroll) {
-    sentences.push("Change only the outfit into a completely different style and color palette than before, while keeping the face, pet, pose, scene and background exactly the same.");
+    sentences.push("Change only the outfit into a completely different style and color palette than before, while keeping the face, gender, pet, pose, scene and background exactly the same.");
   }
 
   return sentences.filter(Boolean).join(" ");
@@ -238,11 +258,21 @@ export function buildVideoPrompt({
   pose,
   motionStyle = "cinematic",
   spokenLine = "",
-  directionNote = ""
+  directionNote = "",
+  hasCompanion = false,
+  companionKind = "friend",
+  subjectGender = "auto",
+  companionGender = "auto"
 }) {
   const style = normalizeMotionStyle(motionStyle);
   const line = sanitizeSpokenLine(spokenLine);
   const direction = sanitizeDirectionNote(directionNote);
+  const companionLock = videoCompanionLock({
+    hasCompanion,
+    companionKind,
+    subjectGender,
+    companionGender
+  });
 
   const ambientMotion = {
     sunny: "sunlight shimmers softly and a gentle breeze moves hair and fabric",
@@ -281,6 +311,7 @@ export function buildVideoPrompt({
       speech,
       "Natural micro-gestures: a slight head nod, soft hand motion near the torso, confident eye contact toward camera or an off-camera host.",
       directionSentence,
+      companionLock,
       `Around them, ${ambient}, with ${time}.`,
       "Camera work: locked-off or very slow subtle push-in, broadcast-interview framing, no whip pans, no cuts.",
       caption,
@@ -294,6 +325,7 @@ export function buildVideoPrompt({
       `An intimate living portrait ${scene.base_prompt}.`,
       "The person stays nearly still, breathing softly, with a tiny natural blink and a gentle, almost imperceptible smile.",
       directionSentence,
+      companionLock,
       `Hair and fabric move only slightly. Around them, ${ambient}, with ${time}.`,
       "Camera work: extremely slow, elegant push-in, shallow depth of field, beauty-editorial stillness.",
       identity,
@@ -306,6 +338,7 @@ export function buildVideoPrompt({
       `A high-atmosphere living scene ${scene.base_prompt}.`,
       "The person holds a confident presence with restrained body motion while the world around them feels alive.",
       directionSentence,
+      companionLock,
       `Around them, ${ambient}, with ${time}, plus richer environmental life — distant figures, light flicker, air and atmosphere moving with realistic physics.`,
       "Camera work: smooth cinematic drift or gentle orbiting push, stabilized, no cuts.",
       identity,
@@ -324,6 +357,7 @@ export function buildVideoPrompt({
     `A cinematic living moment ${scene.base_prompt}.`,
     subjectMotion,
     directionSentence,
+    companionLock,
     `Around them, ${ambient}, with ${time}.`,
     "The background breathes with subtle life — distant figures, light and atmosphere shifting naturally, realistic physics.",
     "Camera work: one slow, smooth stabilized push-in toward the subject, no cuts, no whip pans, shallow cinematic depth of field.",
@@ -423,11 +457,55 @@ function friendIdentitySentence() {
     "and the second person's face 100% identical to Image 2 / the second input photo",
     "For each person preserve the exact same face geometry, eyes, eyebrows, nose, mouth, lips, jawline, cheekbones, skin tone, apparent age, body shape, hair color, length and hairstyle",
     "plus any glasses, freckles, moles or marks",
+    "and the exact same apparent gender / sex presentation as their own source photo",
     "Never swap, blend, merge, average or mix the two faces",
     "never copy one person's features onto the other",
+    "never change a man into a woman or a woman into a man",
     "and never invent a third person",
     "Each must stay instantly recognizable as the specific individual from their own input photo"
   ].join(". ") + ".";
+}
+
+function genderLockSentence(imageIndex, gender, noun) {
+  if (gender === "male") {
+    return `Image ${imageIndex} shows an adult man — keep him male in the output (${noun}), with masculine presentation matching the photo. Do not feminize him or turn him into a woman.`;
+  }
+  if (gender === "female") {
+    return `Image ${imageIndex} shows an adult woman — keep her female in the output (${noun}), with feminine presentation matching the photo. Do not masculinize her or turn her into a man.`;
+  }
+  return `Image ${imageIndex} shows a real person — keep their apparent gender / sex presentation exactly as photographed. If the photo shows a man, keep a man; if it shows a woman, keep a woman. Do not invent an opposite-gender partner.`;
+}
+
+function friendPairingLabel(subjectGender, companionGender) {
+  if (subjectGender === "male" && companionGender === "male") {
+    return "two adult men / male friends";
+  }
+  if (subjectGender === "female" && companionGender === "female") {
+    return "two adult women / female friends";
+  }
+  if (subjectGender === "male" && companionGender === "female") {
+    return "an adult man and an adult woman who are friends";
+  }
+  if (subjectGender === "female" && companionGender === "male") {
+    return "an adult woman and an adult man who are friends";
+  }
+  return "two friends";
+}
+
+function videoCompanionLock({ hasCompanion, companionKind, subjectGender, companionGender }) {
+  if (!hasCompanion) {
+    return "";
+  }
+
+  if (normalizeCompanionKind(companionKind) === "pet") {
+    return "Keep the same human and the same pet from the still in every frame — exactly one person and one animal, no extra people, no gender change for the human.";
+  }
+
+  const pairing = friendPairingLabel(
+    normalizeSubjectGender(subjectGender),
+    normalizeSubjectGender(companionGender)
+  );
+  return `Keep both people from the still in every frame as ${pairing}. Preserve each person's face, body and gender presentation — do not drop, swap, blend or gender-flip either person.`;
 }
 
 export function normalizeSubjectGender(value) {
