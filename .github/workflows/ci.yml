@@ -50,31 +50,59 @@ jobs:
 
   ios-tests:
     name: iOS unit tests
-    runs-on: macos-14
-    # Soft-fail: Mac runners / Xcode versions vary across GitHub-hosted images.
+    # macos-15 ships Xcode 16+, required for objectVersion 77 projects.
+    runs-on: macos-15
     continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Xcode 16+
         run: |
-          if [ -d /Applications/Xcode_15.4.app ]; then
-            sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
-          elif [ -d /Applications/Xcode_16.app ]; then
-            sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-          else
-            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          set -euo pipefail
+          ls /Applications | grep -i Xcode || true
+          # Prefer newest Xcode 16.x — project format 77 cannot open in Xcode 15.
+          SELECTED=""
+          for candidate in \
+            /Applications/Xcode_16.4.app \
+            /Applications/Xcode_16.3.app \
+            /Applications/Xcode_16.2.app \
+            /Applications/Xcode_16.1.app \
+            /Applications/Xcode_16.0.app \
+            /Applications/Xcode_16.app \
+            /Applications/Xcode.app
+          do
+            if [ -d "$candidate" ]; then
+              SELECTED="$candidate"
+              break
+            fi
+          done
+          if [ -z "$SELECTED" ]; then
+            echo "No Xcode 16+ install found"
+            exit 1
           fi
+          echo "Using $SELECTED"
+          sudo xcode-select -s "$SELECTED/Contents/Developer"
           xcodebuild -version
 
       - name: Run AuraTests on simulator
         run: |
           set -euo pipefail
-          xcodebuild -project Aura.xcodeproj -scheme Aura -showdestinations || true
+          # Prefer a simulator that exists on the image.
+          DEST=""
+          for name in "iPhone 16" "iPhone 16 Pro" "iPhone 15"; do
+            if xcrun simctl list devices available | grep -q "$name"; then
+              DEST="platform=iOS Simulator,name=$name"
+              break
+            fi
+          done
+          if [ -z "$DEST" ]; then
+            DEST="platform=iOS Simulator,name=iPhone 16"
+          fi
+          echo "Destination: $DEST"
           xcodebuild test \
             -project Aura.xcodeproj \
             -scheme Aura \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -destination "$DEST" \
             -only-testing:AuraTests \
             CODE_SIGNING_ALLOWED=NO
