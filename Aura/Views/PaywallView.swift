@@ -668,8 +668,7 @@ struct PaywallView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(SceneMeTheme.subtleText)
                 .frame(width: 34, height: 34)
-                .background(.ultraThinMaterial.opacity(0.35))
-                .background(SceneMeTheme.surface.opacity(0.85))
+                .background(SceneMeTheme.surface.opacity(0.92))
                 .clipShape(Circle())
                 .overlay { Circle().stroke(SceneMeTheme.hairline, lineWidth: 1) }
         }
