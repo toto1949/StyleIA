@@ -74,7 +74,7 @@ struct AuraTests {
     }
 
     @Test func cinematicFiltersApplyClientSide() {
-        #expect(CinematicFilter.nonOriginal.count == 4)
+        #expect(CinematicFilter.nonOriginal.count == 7)
 
         let input = solidImage(size: CGSize(width: 64, height: 64))
         for filter in CinematicFilter.nonOriginal {
@@ -82,6 +82,23 @@ struct AuraTests {
             #expect(output.size.width > 0)
             #expect(output.size.height > 0)
         }
+
+        let graded = CinematicFilterEngine.apply(.portra, to: input)
+        let blended = CinematicFilterEngine.blend(input, graded, intensity: 0.4)
+        #expect(blended.size.width > 0)
+        #expect(blended.size.height > 0)
+
+        let nearOriginal = CinematicFilterEngine.blend(input, graded, intensity: 0)
+        #expect(nearOriginal.size == input.size)
+    }
+
+    @Test func customScenesGetUniqueReusableIds() {
+        let first = SceneTemplate.custom(name: "Rooftop", description: "standing on a rooftop in Marrakech with mosaic tiles", outfit: "")
+        let second = SceneTemplate.custom(name: "Rooftop", description: "standing on a rooftop in Marrakech with mosaic tiles", outfit: "")
+        #expect(first.isCustom)
+        #expect(second.isCustom)
+        #expect(first.id != second.id)
+        #expect(first.id.hasPrefix("custom-"))
     }
 
     @Test func postcardRendererComposesFrameAndStrip() {

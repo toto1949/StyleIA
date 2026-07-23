@@ -99,28 +99,62 @@ nonisolated enum CinematicFilterEngine {
     /// Cross-fades the original with the fully graded image so the user can
     /// dial the strength of a look. `intensity` 0 = original, 1 = full grade.
     static func blend(_ original: UIImage, _ filtered: UIImage, intensity: Double) -> UIImage {
+        let clamped = min(max(intensity, 0), 1)
+
+        guard clamped < 0.995 else {
+            return filtered
+        }
+        guard clamped > 0.005 else {
+            return original
+        }
         guard
-            intensity < 0.995,
             let base = CIImage(image: original),
             let graded = CIImage(image: filtered)
         else {
-            return filtered
-        }
-
-        guard intensity > 0.005 else {
             return original
         }
 
-        let mix = CIFilter.dissolveTransition()
-        mix.inputImage = base
-        mix.targetImage = graded
-        mix.time = Float(intensity)
-
-        guard let output = mix.outputImage else {
-            return filtered
+        // Align extents — dissolve fails silently when sizes differ after CI grades.
+        let extent = base.extent.intersection(graded.extent)
+        guard !extent.isNull, extent.width > 1, extent.height > 1 else {
+            return original
         }
 
-        return render(output, extent: base.extent, fallback: filtered)
+        let baseCropped = base.cropped(to: extent)
+        let gradedCropped = graded.cropped(to: extent)
+
+        // Prefer CIMix (linear opacity) over dissolve — more reliable for stills.
+        if let mixFilter = CIFilter(name: "CIMix") {
+            mixFilter.setValue(baseCropped, forKey: kCIInputImageKey)
+            mixFilter.setValue(gradedCropped, forKey: "inputBackgroundImage")
+            mixFilter.setValue(clamped, forKey: kCIInputAmountKey)
+            if let output = mixFilter.outputImage {
+                return render(output, extent: extent, fallback: original)
+            }
+        }
+
+        let dissolve = CIFilter.dissolveTransition()
+        dissolve.inputImage = baseCropped
+        dissolve.targetImage = gradedCropped
+        dissolve.time = Float(clamped)
+
+        if let output = dissolve.outputImage {
+            return render(output, extent: extent, fallback: original)
+        }
+
+        // Last resort: soft alpha composite so the slider never looks "stuck".
+        return softBlend(original: original, filtered: filtered, intensity: clamped) ?? original
+    }
+
+    private static func softBlend(original: UIImage, filtered: UIImage, intensity: Double) -> UIImage? {
+        let size = original.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = original.scale
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            original.draw(in: CGRect(origin: .zero, size: size))
+            filtered.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal, alpha: CGFloat(intensity))
+        }
     }
 
     private static func render(_ output: CIImage, extent: CGRect, fallback: UIImage) -> UIImage {
@@ -344,11 +378,10 @@ nonisolated enum CinematicFilterEngine {
 struct CinematicFilterView: View {
     let baseImage: UIImage?
     @Binding var selection: CinematicFilter
-    /// Committed strength (0…1); only updated when the user releases the slider.
+    /// Live strength (0…1). Updates while dragging so the grade preview responds.
     @Binding var intensity: Double
 
     @State private var previews: [CinematicFilter: UIImage] = [:]
-    @State private var sliderValue: Double = 1
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -383,9 +416,10 @@ struct CinematicFilterView: View {
         .task(id: baseImage) {
             await buildPreviews()
         }
-        .onChange(of: selection) { _, _ in
-            sliderValue = 1
-            intensity = 1
+        .onChange(of: selection) { _, newValue in
+            if newValue != .original {
+                intensity = 1
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selection != .original)
     }
@@ -397,15 +431,10 @@ struct CinematicFilterView: View {
                 .tracking(1.6)
                 .foregroundStyle(SceneMeTheme.subtleText)
 
-            Slider(value: $sliderValue, in: 0.2...1) { editing in
-                // Full-resolution regrade is expensive; commit on release only.
-                if !editing {
-                    intensity = sliderValue
-                }
-            }
-            .tint(SceneMeTheme.gold)
+            Slider(value: $intensity, in: 0...1)
+                .tint(SceneMeTheme.gold)
 
-            Text("\(Int(sliderValue * 100))%")
+            Text("\(Int((intensity * 100).rounded()))%")
                 .font(.system(size: 11, weight: .bold).monospacedDigit())
                 .foregroundStyle(SceneMeTheme.gold)
                 .frame(width: 42, alignment: .trailing)

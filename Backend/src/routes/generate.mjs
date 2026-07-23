@@ -324,7 +324,12 @@ async function insertSceneJob(userId, body, { reroll }) {
 
 function resolveCustomScene(body) {
   const raw = body.customScene;
-  if (!raw && String(body.sceneId || "") !== "custom") {
+  const sceneId = String(body.sceneId || "");
+  const isCustomRequest = Boolean(raw)
+    || sceneId === "custom"
+    || sceneId.startsWith("custom-");
+
+  if (!isCustomRequest) {
     return null;
   }
 
@@ -336,6 +341,11 @@ function resolveCustomScene(body) {
 
   if (!scene) {
     throw new HttpError(400, "Custom scene needs a description of at least a few words.");
+  }
+
+  // Keep the client's unique custom-* id so the app can reuse saved templates.
+  if (sceneId.startsWith("custom-")) {
+    scene.id = sceneId;
   }
 
   return scene;

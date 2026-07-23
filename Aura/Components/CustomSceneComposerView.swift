@@ -108,7 +108,7 @@ struct CustomSceneComposerView: View {
     private var createBar: some View {
         VStack(spacing: 8) {
             SceneMeCTAButton(
-                title: "Use This Scene",
+                title: "Save & Use Scene",
                 systemImage: "wand.and.stars",
                 isEnabled: isValid
             ) {
@@ -117,7 +117,11 @@ struct CustomSceneComposerView: View {
             }
 
             if !isValid {
-                Text("Describe your scene in a few words to continue")
+                Text("Add a short place description (at least 12 characters)")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(SceneMeTheme.faintText)
+            } else {
+                Text("Saved to Yours so you can reuse it later")
                     .font(.system(size: 11, weight: .regular))
                     .foregroundStyle(SceneMeTheme.faintText)
             }

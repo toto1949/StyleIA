@@ -92,7 +92,16 @@ struct ResultView: View {
             filterIntensity = 1
             refreshExportImage()
         }
-        .task(id: "\(selectedFilter.rawValue)|\(filterIntensity)") {
+        .onChange(of: selectedFilter) { _, _ in
+            // Drop the previous look immediately so strength never shows a stale grade.
+            gradedImage = nil
+        }
+        .task(id: "\(selectedFilter.rawValue)|\(String(format: "%.2f", filterIntensity))") {
+            if selectedFilter == .original {
+                gradedImage = nil
+                refreshExportImage()
+                return
+            }
             await applySelectedFilter()
             await applyIntensity()
             refreshExportImage()
@@ -161,7 +170,12 @@ struct ResultView: View {
         guard selectedFilter != .original else {
             return base
         }
-        return gradedImage ?? filteredCache[selectedFilter] ?? base
+        // Prefer the intensity-blended image; while it loads, show the cached
+        // full grade for this filter only — never a previous filter's grade.
+        if let gradedImage {
+            return gradedImage
+        }
+        return filteredCache[selectedFilter] ?? base
     }
 
     private func fullScreenImage(for result: GenerationResult) -> some View {
@@ -527,13 +541,13 @@ struct ResultView: View {
                 showPostcard = true
             } label: {
                 HStack(spacing: 8) {
-                    Text("📮")
-                        .font(.system(size: 14))
+                    Image(systemName: "envelope.open.fill")
+                        .font(.system(size: 14, weight: .semibold))
                     Text("POSTCARD")
                         .font(.system(size: 13, weight: .bold))
                         .tracking(1.8)
                 }
-                .foregroundStyle(SceneMeTheme.text)
+                .foregroundStyle(SceneMeTheme.gold)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
                 .background(SceneMeTheme.panel.opacity(0.9))
