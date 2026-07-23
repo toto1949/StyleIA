@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "cursor/**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: |
+          node --check src/server.mjs
+          node --check src/config.mjs
+          node --check src/routes/generate.mjs
+          node --check src/routes/legal.mjs
+          node --check src/services/fal-service.mjs
+          node --check src/services/prompt-builder.mjs
+
+      - name: Companion prompt regression
+        run: npm run test:companions
+
+      - name: Mock API smoke test
+        run: npm run test:smoke
+        env:
+          STYLEAI_JWT_SECRET: ci-test-secret-at-least-32-characters-long
+
+  ios-tests:
+    name: iOS unit tests
+    # macos-15 ships Xcode 16+, required for objectVersion 77 projects.
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16+
+        run: |
+          set -euo pipefail
+          ls /Applications | grep -i Xcode || true
+          # Prefer newest Xcode 16.x — project format 77 cannot open in Xcode 15.
+          SELECTED=""
+          for candidate in \
+            /Applications/Xcode_16.4.app \
+            /Applications/Xcode_16.3.app \
+            /Applications/Xcode_16.2.app \
+            /Applications/Xcode_16.1.app \
+            /Applications/Xcode_16.0.app \
+            /Applications/Xcode_16.app \
+            /Applications/Xcode.app
+          do
+            if [ -d "$candidate" ]; then
+              SELECTED="$candidate"
+              break
+            fi
+          done
+          if [ -z "$SELECTED" ]; then
+            echo "No Xcode 16+ install found"
+            exit 1
+          fi
+          echo "Using $SELECTED"
+          sudo xcode-select -s "$SELECTED/Contents/Developer"
+          xcodebuild -version
+
+      - name: Run AuraTests on simulator
+        run: |
+          set -euo pipefail
+          # Prefer a simulator that exists on the image.
+          DEST=""
+          for name in "iPhone 16" "iPhone 16 Pro" "iPhone 15"; do
+            if xcrun simctl list devices available | grep -q "$name"; then
+              DEST="platform=iOS Simulator,name=$name"
+              break
+            fi
+          done
+          if [ -z "$DEST" ]; then
+            DEST="platform=iOS Simulator,name=iPhone 16"
+          fi
+          echo "Destination: $DEST"
+          xcodebuild test \
+            -project Aura.xcodeproj \
+            -scheme Aura \
+            -destination "$DEST" \
+            -only-testing:AuraTests \
+            CODE_SIGNING_ALLOWED=NO

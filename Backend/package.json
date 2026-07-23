@@ -8,7 +8,10 @@
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "dev": "STYLEAI_ENABLE_MOCK_GENERATION=true node src/server.mjs"
+    "dev": "STYLEAI_ENABLE_MOCK_GENERATION=true node src/server.mjs",
+    "test:companions": "node scripts/verify-companion-prompts.mjs",
+    "test:smoke": "bash scripts/ci-smoke.sh",
+    "test": "npm run test:companions && npm run test:smoke"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1"

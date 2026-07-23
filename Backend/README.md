@@ -1,12 +1,13 @@
-# StyleAI Backend
+# StyleAI / SceneMe Backend
 
-Dependency-free Node 20 backend for the Aura/StyleAI iOS app.
+Node 20 API for the SceneMe iOS app (generation, auth, uploads, legal pages).
 
 ## Run locally
 
 ```bash
 cd Backend
 cp .env.example .env
+npm install
 npm start
 ```
 
@@ -24,6 +25,14 @@ WebSocket URL: ws://localhost:8080/ws
 ```
 
 On a physical iPhone, replace `localhost` with your Mac's LAN IP and set `PUBLIC_BASE_URL` to that same origin.
+
+## Tests
+
+```bash
+npm run test:companions   # friend/pet gender prompt locks
+npm run test:smoke        # mock API smoke (auth, generate, legal, video)
+npm test                  # both
+```
 
 ## Required production configuration
 
