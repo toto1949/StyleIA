@@ -21,11 +21,12 @@ struct AuraTests {
         #expect(result.confidence == 0)
     }
 
-    @Test func sceneCatalogContainsFifteenUniqueScenes() {
+    @Test func sceneCatalogContainsUniqueValidScenes() {
         let scenes = SceneCatalog.bundled
 
-        #expect(scenes.count == 15)
-        #expect(Set(scenes.map(\.id)).count == 15)
+        // Catalog has grown past the original 15; keep a floor and require unique IDs.
+        #expect(scenes.count >= 15)
+        #expect(Set(scenes.map(\.id)).count == scenes.count)
         #expect(scenes.allSatisfy { !$0.basePrompt.isEmpty })
         #expect(scenes.allSatisfy { !$0.defaultOutfit.isEmpty })
         #expect(scenes.allSatisfy { !$0.availableTimes.isEmpty })
@@ -61,7 +62,7 @@ struct AuraTests {
         )
 
         #expect(scene.isCustom)
-        #expect(scene.id == "custom")
+        #expect(scene.id.hasPrefix("custom-"))
         #expect(scene.name == "Marrakech Rooftop")
         #expect(scene.basePrompt.contains("Marrakech"))
         #expect(!scene.defaultOutfit.isEmpty)

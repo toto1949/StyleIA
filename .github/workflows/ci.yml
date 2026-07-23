@@ -52,7 +52,6 @@ jobs:
     name: iOS unit tests
     # macos-15 ships Xcode 16+, required for objectVersion 77 projects.
     runs-on: macos-15
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
