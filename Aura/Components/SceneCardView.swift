@@ -101,7 +101,7 @@ struct SceneCardView: View {
                     Text(badgeTitle)
                         .font(.system(size: 9, weight: .heavy))
                         .tracking(1.2)
-                        .foregroundStyle(scene.badge == .premium ? SceneMeTheme.gold : SceneMeTheme.text)
+                        .foregroundStyle(badgeUsesGold ? SceneMeTheme.gold : SceneMeTheme.text)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 5)
                         .background(Color.black.opacity(0.72))
@@ -161,6 +161,13 @@ struct SceneCardView: View {
 
     private var badgeTitle: String? {
         overrideBadgeTitle ?? scene.badge?.title
+    }
+
+    private var badgeUsesGold: Bool {
+        if let overrideBadgeTitle, overrideBadgeTitle.contains("YOURS") || overrideBadgeTitle.contains("✦") {
+            return true
+        }
+        return scene.badge == .premium || scene.isCustom
     }
 
     private var locationEyebrow: String {

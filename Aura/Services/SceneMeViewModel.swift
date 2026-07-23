@@ -56,6 +56,8 @@ final class SceneMeViewModel: ObservableObject {
     @Published var session: SceneMeSession?
 
     @Published var scenes: [SceneTemplate] = SceneCatalog.bundled
+    /// User-authored templates saved on-device for reuse in the picker.
+    @Published var customScenes: [SceneTemplate] = []
     @Published var profile = UserProfile.default
 
     @Published var userPhoto: UIImage?
@@ -141,6 +143,7 @@ final class SceneMeViewModel: ObservableObject {
         }
         history = persistence.loadHistory()
         favoriteIds = persistence.loadFavorites()
+        customScenes = persistence.loadCustomScenes()
 
         // Re-render views reading currentTier when entitlements (or the debug
         // override) change, since they observe this view model, not the service.
@@ -248,6 +251,7 @@ final class SceneMeViewModel: ObservableObject {
         history = persistence.loadHistory()
         favoriteIds = persistence.loadFavorites()
         userPhoto = persistence.loadPhoto()
+        customScenes = persistence.loadCustomScenes()
         subscriptionService.bindAccount(userId: newSession.userId)
         Task { await syncHistoryFromServer() }
     }
@@ -279,6 +283,7 @@ final class SceneMeViewModel: ObservableObject {
         usageCounter = nil
         history = []
         favoriteIds = []
+        customScenes = []
         profile = .default
         userPhoto = nil
         photoItem = nil
@@ -377,11 +382,36 @@ final class SceneMeViewModel: ObservableObject {
         }
     }
 
-    /// Builds a scene from the user's own description and jumps to options.
+    /// Builds a scene from the user's own description, saves it for reuse, and jumps to options.
     func createCustomScene(name: String, description: String, outfit: String) {
         let scene = SceneTemplate.custom(name: name, description: description, outfit: outfit)
+        customScenes.removeAll { $0.id == scene.id }
+        customScenes.insert(scene, at: 0)
+        persistence.saveCustomScenes(customScenes)
         request = GenerationRequest(scene: scene)
+        notice = "Saved to Yours — tap it anytime to reuse."
         move(to: .sceneOptions)
+    }
+
+    func deleteCustomScene(_ scene: SceneTemplate) {
+        customScenes.removeAll { $0.id == scene.id }
+        persistence.saveCustomScenes(customScenes)
+        if request?.scene.id == scene.id {
+            request = nil
+        }
+        notice = "Custom scene removed."
+    }
+
+    /// Catalog scenes plus saved custom templates (customs first when browsing All / Yours).
+    var pickerScenes: [SceneTemplate] {
+        customScenes + scenes.filter { !$0.isCustom }
+    }
+
+    func scene(forId id: String) -> SceneTemplate? {
+        if let match = customScenes.first(where: { $0.id == id }) {
+            return match
+        }
+        return scenes.first(where: { $0.id == id })
     }
 
     // MARK: - Photos
@@ -759,8 +789,20 @@ final class SceneMeViewModel: ObservableObject {
         currentResult = result
         currentJobId = result.id
         resultImage = nil
-        if let scene = scenes.first(where: { $0.id == result.sceneId }) {
+        if let scene = scene(forId: result.sceneId) {
             var rebuilt = GenerationRequest(scene: scene)
+            rebuilt.timeOfDay = result.timeOfDay
+            rebuilt.weather = result.weather
+            rebuilt.pose = result.pose
+            request = rebuilt
+        } else if result.sceneId.hasPrefix("custom") || result.sceneLocation.lowercased().contains("custom") {
+            // Legacy / deleted custom — rebuild a one-shot template so remix still works.
+            let recovered = SceneTemplate.custom(
+                name: result.sceneName,
+                description: "in \(result.sceneName)",
+                outfit: ""
+            )
+            var rebuilt = GenerationRequest(scene: recovered)
             rebuilt.timeOfDay = result.timeOfDay
             rebuilt.weather = result.weather
             rebuilt.pose = result.pose
@@ -831,6 +873,10 @@ private struct SceneMeHistoryStore {
         return directory?.appendingPathComponent("sceneme-photo\(suffix).jpg")
     }
 
+    private var customScenesURL: URL? {
+        directory?.appendingPathComponent("sceneme-custom-scenes\(suffix).json")
+    }
+
     func loadHistory() -> [GenerationResult] {
         guard
             let historyURL,
@@ -879,9 +925,25 @@ private struct SceneMeHistoryStore {
         }
     }
 
-    /// Permanently removes this account's local history, favorites, and photo.
+    func loadCustomScenes() -> [SceneTemplate] {
+        guard
+            let customScenesURL,
+            let data = try? Data(contentsOf: customScenesURL),
+            let scenes = try? decoder().decode([SceneTemplate].self, from: data)
+        else {
+            return []
+        }
+        return scenes
+    }
+
+    func saveCustomScenes(_ scenes: [SceneTemplate]) {
+        guard let customScenesURL, userId != nil else { return }
+        write(try? encoder().encode(scenes), to: customScenesURL)
+    }
+
+    /// Permanently removes this account's local history, favorites, photo, and custom scenes.
     func wipeAll() {
-        for url in [historyURL, favoritesURL, photoURL].compactMap({ $0 }) {
+        for url in [historyURL, favoritesURL, photoURL, customScenesURL].compactMap({ $0 }) {
             try? FileManager.default.removeItem(at: url)
         }
     }

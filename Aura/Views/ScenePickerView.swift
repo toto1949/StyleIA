@@ -205,8 +205,12 @@ struct ScenePickerView: View {
     }
 
     private var filteredScenes: [SceneTemplate] {
+        let all = viewModel.pickerScenes
         guard let category else {
-            return viewModel.scenes
+            return all
+        }
+        if category == .custom {
+            return viewModel.customScenes
         }
         return viewModel.scenes.filter { $0.category == category }
     }
@@ -217,9 +221,39 @@ struct ScenePickerView: View {
         let left = scenes.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
         let right = scenes.enumerated().filter { !$0.offset.isMultiple(of: 2) }.map(\.element)
 
-        return HStack(alignment: .top, spacing: 12) {
-            column(for: left, tallFirst: true)
-            column(for: right, tallFirst: false)
+        return Group {
+            if scenes.isEmpty, category == .custom {
+                emptyYoursState
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    column(for: left, tallFirst: true)
+                    column(for: right, tallFirst: false)
+                }
+            }
+        }
+    }
+
+    private var emptyYoursState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(SceneMeTheme.gold)
+            Text("No saved scenes yet")
+                .font(.system(size: 16, weight: .regular, design: .serif))
+                .foregroundStyle(SceneMeTheme.text)
+            Text("Create your own above — it stays here so you can reuse it.")
+                .font(.system(size: 12))
+                .foregroundStyle(SceneMeTheme.subtleText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 18)
+        .background(SceneMeTheme.panel.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
+                .strokeBorder(SceneMeTheme.gold.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
         }
     }
 
@@ -230,9 +264,20 @@ struct ScenePickerView: View {
                     scene: scene,
                     isSelected: viewModel.selectedScene?.id == scene.id,
                     height: cardHeight(index: index, tallFirst: tallFirst),
-                    overrideBadgeTitle: scene.badge == .popular ? "🔥 MOST USED" : nil
+                    overrideBadgeTitle: scene.isCustom
+                        ? "✦ YOURS"
+                        : (scene.badge == .popular ? "MOST USED" : nil)
                 ) {
                     viewModel.selectScene(scene)
+                }
+                .contextMenu {
+                    if scene.isCustom {
+                        Button(role: .destructive) {
+                            viewModel.deleteCustomScene(scene)
+                        } label: {
+                            Label("Delete Scene", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }

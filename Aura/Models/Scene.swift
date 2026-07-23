@@ -38,21 +38,22 @@ struct SceneTemplate: Codable, Equatable, Hashable, Identifiable {
     }
 
     var isCustom: Bool {
-        id == "custom"
+        id == "custom" || id.hasPrefix("custom-")
     }
 
     /// A user-described scene template; the backend builds the prompt from this text.
     static func custom(name: String, description: String, outfit: String) -> SceneTemplate {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedOutfit = outfit.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return SceneTemplate(
-            id: "custom",
+            id: "custom-\(UUID().uuidString.lowercased())",
             name: trimmedName.isEmpty ? "My Scene" : trimmedName,
             location: "Custom Scene",
             category: .custom,
-            description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-            basePrompt: description.trimmingCharacters(in: .whitespacesAndNewlines),
+            description: trimmedDescription,
+            basePrompt: trimmedDescription,
             thumbnailURL: nil,
             defaultOutfit: trimmedOutfit.isEmpty
                 ? "a stylish outfit that naturally fits the described scene, editorial fashion quality"
@@ -79,12 +80,19 @@ enum SceneCategory: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
-        self == .professional ? "Pro Headshots" : rawValue.capitalized
+        switch self {
+        case .professional:
+            return "Pro Headshots"
+        case .custom:
+            return "Yours"
+        default:
+            return rawValue.capitalized
+        }
     }
 
-    /// Categories shown as filter chips in the picker (custom scenes are user-made).
+    /// Categories shown as filter chips in the picker.
     static var pickerCases: [SceneCategory] {
-        [.urban, .nature, .luxury, .events, .professional]
+        [.urban, .nature, .luxury, .events, .professional, .custom]
     }
 }
 
@@ -97,13 +105,13 @@ enum SceneBadge: String, Codable {
     var title: String {
         switch self {
         case .popular:
-            return "🔥 POPULAR"
+            return "POPULAR"
         case .new:
-            return "+ NEW"
+            return "NEW"
         case .premium:
-            return "◆ PREMIUM"
+            return "PREMIUM"
         case .limited:
-            return "⏳ LIMITED"
+            return "LIMITED"
         }
     }
 }
