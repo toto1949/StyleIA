@@ -75,6 +75,18 @@ struct APIService {
 
     struct EmptyBody: Encodable {}
 
+    struct ImprovedSceneTemplate: Decodable {
+        let name: String
+        let description: String
+        let outfit: String
+    }
+
+    private struct ImproveSceneTemplateRequest: Encodable {
+        let name: String
+        let description: String
+        let outfit: String
+    }
+
     func signIn(email: String, password: String) async throws -> AuthResponse {
         try await post(
             "auth/email",
@@ -114,6 +126,19 @@ struct APIService {
     func fetchScenes() async throws -> [SceneTemplate] {
         let payload: ScenesPayload = try await get("scenes", token: nil)
         return payload.scenes
+    }
+
+    func improveSceneTemplate(
+        name: String,
+        description: String,
+        outfit: String,
+        token: String
+    ) async throws -> ImprovedSceneTemplate {
+        try await post(
+            "templates/improve",
+            body: ImproveSceneTemplateRequest(name: name, description: description, outfit: outfit),
+            token: token
+        )
     }
 
     func post<RequestBody: Encodable, ResponseBody: Decodable>(

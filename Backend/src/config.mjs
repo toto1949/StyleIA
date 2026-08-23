@@ -80,6 +80,8 @@ export const config = Object.freeze({
     .map((value) => value.trim())
     .filter(Boolean),
   falKey: process.env.FAL_KEY || "",
+  openAIKey: process.env.OPENAI_API_KEY || "",
+  openAITemplateModel: process.env.OPENAI_TEMPLATE_MODEL || "gpt-5-mini",
   falModel: process.env.FAL_MODEL || "fal-ai/flux-pro/kontext",
   // Companion (friend/pet): pro multi is ~$0.04 vs max/multi ~$0.08. Override with
   // fal-ai/flux-pro/kontext/max/multi only if A/B shows face lock needs it.

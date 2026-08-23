@@ -27,6 +27,7 @@ import { listScenes } from "./routes/scenes.mjs";
 import { presignUpload, receiveUpload, serveUpload } from "./routes/upload.mjs";
 import { store } from "./services/store-instance.mjs";
 import { handleUpgrade, sendJobUpdate } from "./websocket.mjs";
+import { improveSceneTemplate } from "./services/openai-template-service.mjs";
 
 await fs.mkdir(config.uploadDirectory, { recursive: true });
 await store.init();
@@ -149,6 +150,14 @@ async function route(request, response) {
 
   if (request.method === "GET" && routePath === "/scenes") {
     await listScenes(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && routePath === "/templates/improve") {
+    const auth = authenticateRequest(request);
+    const body = await readJSON(request);
+    const template = await improveSceneTemplate({ ...body, userId: auth.sub });
+    sendJSON(response, 200, template);
     return;
   }
 

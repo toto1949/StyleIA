@@ -5,9 +5,13 @@ import SwiftUI
 struct CustomSceneComposerView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @ObservedObject var viewModel: SceneMeViewModel
+
     @State private var name = ""
     @State private var sceneDescription = ""
     @State private var outfit = ""
+    @State private var isImproving = false
+    @State private var improvementError: String?
 
     let onCreate: (_ name: String, _ description: String, _ outfit: String) -> Void
 
@@ -45,6 +49,8 @@ struct CustomSceneComposerView: View {
                             .textFieldStyle(.plain)
                             .lineLimit(2...4)
                     }
+
+                    aiImproveCard
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 26)
@@ -103,6 +109,86 @@ struct CustomSceneComposerView: View {
 
     private func prompt(_ text: String) -> Text {
         Text(text).foregroundStyle(SceneMeTheme.faintText)
+    }
+
+    private var aiImproveCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(SceneMeTheme.gold)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("IMPROVE WITH OPENAI")
+                        .font(.system(size: 11, weight: .heavy))
+                        .tracking(1.5)
+                        .foregroundStyle(SceneMeTheme.gold)
+                    Text("Adds cinematic lighting, camera, atmosphere, and a coordinated outfit.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(SceneMeTheme.subtleText)
+                }
+            }
+
+            Button {
+                Task { await improveWithAI() }
+            } label: {
+                HStack(spacing: 8) {
+                    if isImproving {
+                        ProgressView().tint(Color.black)
+                    } else {
+                        Image(systemName: "wand.and.stars")
+                    }
+                    Text(isImproving ? "IMPROVING…" : "ENHANCE TEMPLATE")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(1.4)
+                }
+                .foregroundStyle(Color.black.opacity(0.88))
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(SceneMeTheme.gold)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(SceneMePressButtonStyle())
+            .disabled(!isValid || isImproving)
+            .opacity(isValid ? 1 : 0.45)
+
+            if let improvementError {
+                Text(improvementError)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.42))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .background(SceneMeTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 6, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 6, style: .continuous)
+                .stroke(SceneMeTheme.gold.opacity(0.35), lineWidth: 1)
+        }
+    }
+
+    @MainActor
+    private func improveWithAI() async {
+        guard !isImproving else { return }
+        isImproving = true
+        improvementError = nil
+        defer { isImproving = false }
+
+        do {
+            let improved = try await viewModel.improveCustomScene(
+                name: name,
+                description: sceneDescription,
+                outfit: outfit
+            )
+            withAnimation(.easeInOut(duration: 0.25)) {
+                name = improved.name
+                sceneDescription = improved.description
+                outfit = improved.outfit
+            }
+        } catch {
+            improvementError = (error as? LocalizedError)?.errorDescription
+                ?? "Could not improve this template. Please try again."
+        }
     }
 
     private var createBar: some View {

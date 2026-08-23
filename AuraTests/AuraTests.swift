@@ -46,6 +46,18 @@ struct AuraTests {
         #expect(request.previewSummary.contains("Times Square"))
     }
 
+    @Test func companionGenderSelectionIsPreserved() throws {
+        let scene = try #require(SceneCatalog.bundled.first { $0.id == "times-square" })
+        var request = GenerationRequest(scene: scene)
+        request.subjectGender = .male
+        request.hasCompanion = true
+        request.companionKind = .friend
+        request.companionGender = .male
+
+        #expect(request.companionGender == .male)
+        #expect(request.previewSummary.contains("man friend"))
+    }
+
     @Test func scenesProvideGenderedOutfits() {
         let scenes = SceneCatalog.bundled
 
@@ -75,13 +87,18 @@ struct AuraTests {
     }
 
     @Test func cinematicFiltersApplyClientSide() {
-        #expect(CinematicFilter.nonOriginal.count == 7)
+        #expect(CinematicFilter.nonOriginal.count == CinematicFilter.allCases.count - 1)
 
         let input = solidImage(size: CGSize(width: 64, height: 64))
         for filter in CinematicFilter.nonOriginal {
             let output = CinematicFilterEngine.apply(filter, to: input)
             #expect(output.size.width > 0)
             #expect(output.size.height > 0)
+
+            let originalStrength = CinematicFilterEngine.blend(input, output, intensity: 0)
+            let fullStrength = CinematicFilterEngine.blend(input, output, intensity: 1)
+            #expect(originalStrength.size == input.size)
+            #expect(fullStrength.size == output.size)
         }
 
         let graded = CinematicFilterEngine.apply(.portra, to: input)

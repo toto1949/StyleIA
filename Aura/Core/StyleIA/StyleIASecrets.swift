@@ -2,6 +2,8 @@ import Foundation
 
 // Secrets shim: central place to fetch the backend API base URL.
 enum Secrets {
+    static let companyWebsiteURL = URL(string: "https://zevyntalabs.com/")!
+
     static var backendAPIBaseURL: URL? {
         if
             let env = ProcessInfo.processInfo.environment["STYLEIA_API_BASE_URL"]?

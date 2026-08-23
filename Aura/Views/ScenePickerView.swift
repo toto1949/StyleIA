@@ -29,7 +29,7 @@ struct ScenePickerView: View {
         }
         .background(SceneMeTheme.ink)
         .sheet(isPresented: $showCustomComposer) {
-            CustomSceneComposerView { name, description, outfit in
+            CustomSceneComposerView(viewModel: viewModel) { name, description, outfit in
                 viewModel.createCustomScene(name: name, description: description, outfit: outfit)
             }
         }

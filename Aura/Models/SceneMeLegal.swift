@@ -6,6 +6,7 @@ import SwiftUI
 enum SceneMeLegal {
     static var privacyURL: URL { Secrets.privacyPolicyURL }
     static var termsURL: URL { Secrets.termsOfUseURL }
+    static var companyURL: URL { Secrets.companyWebsiteURL }
 
     /// Compact "Privacy Policy  ·  Terms of Use" footer used on auth / paywall.
     struct InlineLinks: View {
@@ -32,6 +33,16 @@ enum SceneMeLegal {
 
                 VStack(spacing: 0) {
                     linkRow(
+                        icon: "building.2.fill",
+                        title: "Zevynta Labs LLC",
+                        url: companyURL
+                    )
+
+                    Divider()
+                        .background(SceneMeTheme.hairline)
+                        .padding(.leading, 54)
+
+                    linkRow(
                         icon: "hand.raised.fill",
                         title: "Privacy Policy",
                         url: privacyURL
@@ -53,6 +64,10 @@ enum SceneMeLegal {
                     RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
                         .stroke(SceneMeTheme.hairline, lineWidth: 1)
                 }
+
+                Text("SceneMe is a product of Zevynta Labs LLC.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(SceneMeTheme.faintText)
             }
         }
 

@@ -25,6 +25,11 @@ services:
       # Your fal.ai API key (dashboard prompts for this on first deploy).
       - key: FAL_KEY
         sync: false
+      # Server-side only. Used to improve custom scene templates with OpenAI.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_TEMPLATE_MODEL
+        value: gpt-5-mini
       # Must match the iOS app's bundle identifier (Sign in with Apple audience).
       - key: APPLE_CLIENT_ID
         sync: false

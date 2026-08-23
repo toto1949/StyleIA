@@ -414,6 +414,22 @@ final class SceneMeViewModel: ObservableObject {
         return scenes.first(where: { $0.id == id })
     }
 
+    func improveCustomScene(
+        name: String,
+        description: String,
+        outfit: String
+    ) async throws -> APIService.ImprovedSceneTemplate {
+        guard let api, let token = session?.accessToken else {
+            throw SceneMeAPIError.unauthorized
+        }
+        return try await api.improveSceneTemplate(
+            name: name,
+            description: description,
+            outfit: outfit,
+            token: token
+        )
+    }
+
     // MARK: - Photos
 
     func loadSelectedPhoto() async {
@@ -467,6 +483,13 @@ final class SceneMeViewModel: ObservableObject {
 
     func startGeneration() {
         guard let request else { return }
+
+        guard !(request.hasCompanion
+                && request.companionKind == .friend
+                && request.companionGender == .auto) else {
+            notice = "Choose your friend's gender before generating so both people are preserved correctly."
+            return
+        }
 
         // Check monthly generation limit before starting.
         if hasReachedGenerationLimit {

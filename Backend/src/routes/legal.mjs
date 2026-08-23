@@ -54,7 +54,7 @@ function layout(title, body) {
 <body>
   <main>
     <h1>${title}</h1>
-    <p class="meta">SceneMe · Last updated July 16, 2026 · Contact: support@sceneme.app</p>
+    <p class="meta">SceneMe, a Zevynta Labs LLC product · Last updated August 23, 2026</p>
     ${body}
   </main>
 </body>
@@ -63,7 +63,7 @@ function layout(title, body) {
 
 function privacyHTML() {
   return layout("Privacy Policy", `
-    <p>SceneMe (“we”, “us”) helps you place yourself into cinematic scenes using photos you choose. This policy explains what we collect and why.</p>
+    <p>SceneMe is a product operated by Zevynta Labs LLC (“Zevynta Labs”, “we”, “us”). SceneMe helps you place yourself into cinematic scenes using photos you choose. This policy explains what we collect and why.</p>
 
     <h2>Information we collect</h2>
     <ul>
@@ -82,7 +82,7 @@ function privacyHTML() {
     </ul>
 
     <h2>Processors</h2>
-    <p>We use infrastructure and AI providers to process uploads and generate media (for example cloud hosting and fal.ai models). Content is processed to fulfill your request and is not sold.</p>
+    <p>We use infrastructure and AI providers to process requests and generate media (for example cloud hosting, OpenAI for optional template improvement, and fal.ai models for image and video generation). Content is processed to fulfill your request and is not sold.</p>
 
     <h2>Retention</h2>
     <p>Uploaded photos and generated results are kept so you can view history and re-use features such as Animate. You may delete your account in the app, which removes associated account data we control. Cached CDN media may expire according to provider limits.</p>
@@ -102,13 +102,14 @@ function privacyHTML() {
 
     <h2>Contact</h2>
     <p>Questions: <a href="mailto:support@sceneme.app">support@sceneme.app</a></p>
+    <p>Company website: <a href="https://zevyntalabs.com/">zevyntalabs.com</a></p>
     <p>Also see our <a href="${config.publicBaseURL}/terms">Terms of Use</a>.</p>
   `);
 }
 
 function termsHTML() {
   return layout("Terms of Use", `
-    <p>By using SceneMe you agree to these Terms. If you do not agree, do not use the app.</p>
+    <p>These Terms are an agreement between you and Zevynta Labs LLC, the operator of SceneMe. By using SceneMe you agree to these Terms. If you do not agree, do not use the app.</p>
 
     <h2>The service</h2>
     <p>SceneMe generates AI images and short videos that place you (and optional companions) into themed scenes. Results are creative interpretations and may not be perfect likenesses. Talking videos may include synthesized speech of text you provide.</p>
@@ -140,6 +141,9 @@ function termsHTML() {
 
     <h2>Contact</h2>
     <p><a href="mailto:support@sceneme.app">support@sceneme.app</a></p>
+    <p>Company website: <a href="https://zevyntalabs.com/">zevyntalabs.com</a></p>
     <p>Privacy details: <a href="${config.publicBaseURL}/privacy">Privacy Policy</a>.</p>
+
+    <p>© 2026 Zevynta Labs LLC. All rights reserved.</p>
   `);
 }

@@ -232,6 +232,10 @@ async function insertSceneJob(userId, body, { reroll }) {
     ? "auto"
     : normalizeSubjectGender(body.companionGender);
 
+  if (hasCompanion && companionKind === "friend" && companionGender === "auto") {
+    throw new HttpError(400, "Choose the friend's gender before generating.");
+  }
+
   const prompt = buildPrompt({
     scene,
     timeOfDay,

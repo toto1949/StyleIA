@@ -44,6 +44,21 @@ const auth = await api("/v1/auth/email", {
 const token = auth.accessToken;
 console.log("auth ok");
 
+// OpenAI-backed template improvement uses a deterministic substitute in mock mode.
+const improvedTemplate = await api("/v1/templates/improve", {
+  method: "POST",
+  body: JSON.stringify({
+    name: "Paris Night",
+    description: "walking beside the Eiffel Tower after dark",
+    outfit: ""
+  })
+}, token);
+if (!improvedTemplate.description.includes("cinematic directional lighting")) {
+  fail("AI template improvement missing cinematic detail");
+}
+if (!improvedTemplate.outfit) fail("AI template improvement missing outfit");
+console.log("AI template improvement ok");
+
 // 2. Upload a tiny jpeg
 const presign = await api("/v1/upload/presign", { method: "POST", body: "{}" }, token);
 const jpegBytes = Buffer.from(
@@ -59,6 +74,50 @@ if (!uploadResponse.ok) {
   fail(`upload -> ${uploadResponse.status}`);
 }
 console.log("upload ok");
+
+// Upload a second reference and prove same-gender companion data survives the
+// complete HTTP route, not only the prompt-builder unit regression checks.
+const companionPresign = await api("/v1/upload/presign", { method: "POST", body: "{}" }, token);
+const companionUpload = await fetch(companionPresign.uploadURL, {
+  method: "PUT",
+  headers: { "Content-Type": "image/jpeg" },
+  body: jpegBytes
+});
+if (!companionUpload.ok) fail(`companion upload -> ${companionUpload.status}`);
+
+const ambiguousFriend = await fetch(`${base}/v1/scene-jobs`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+  body: JSON.stringify({
+    s3Key: presign.s3Key,
+    companionS3Key: companionPresign.s3Key,
+    sceneId: "times-square",
+    subjectGender: "male",
+    companionKind: "friend",
+    companionGender: "auto"
+  })
+});
+if (ambiguousFriend.status !== 400) fail(`ambiguous friend gender should be 400, got ${ambiguousFriend.status}`);
+
+const maleFriends = await api("/v1/scene-jobs", {
+  method: "POST",
+  body: JSON.stringify({
+    s3Key: presign.s3Key,
+    companionS3Key: companionPresign.s3Key,
+    sceneId: "times-square",
+    subjectGender: "male",
+    companionKind: "friend",
+    companionGender: "male",
+    timeOfDay: "night",
+    weather: "sunny",
+    pose: "walking"
+  })
+}, token);
+if (!maleFriends.prompt.includes("two adult men")) fail("male+male request lost its gender pairing");
+if (!maleFriends.prompt.includes("Image 2 shows an adult man")) fail("male friend identity lock missing");
+const maleFriendsDone = await waitForJob(maleFriends.jobId, token);
+if (!maleFriendsDone.imageURL || !maleFriendsDone.hasCompanion) fail("male+male companion job failed");
+console.log("male+male companion job ok");
 
 // 3. Gendered scene job
 const job1 = await api("/v1/scene-jobs", {
@@ -218,10 +277,10 @@ if (!privacy.ok) fail(`privacy page -> ${privacy.status}`);
 if (!terms.ok) fail(`terms page -> ${terms.status}`);
 const privacyHTML = await privacy.text();
 const termsHTML = await terms.text();
-if (!privacyHTML.includes("Privacy Policy") || !privacyHTML.includes("SceneMe")) {
+if (!privacyHTML.includes("Privacy Policy") || !privacyHTML.includes("Zevynta Labs LLC")) {
   fail("privacy page missing expected content");
 }
-if (!termsHTML.includes("Terms of Use") || !termsHTML.includes("Subscriptions")) {
+if (!termsHTML.includes("Terms of Use") || !termsHTML.includes("Subscriptions") || !termsHTML.includes("zevyntalabs.com")) {
   fail("terms page missing expected content");
 }
 const privacyHead = await fetch(`${base}/privacy`, { method: "HEAD" });

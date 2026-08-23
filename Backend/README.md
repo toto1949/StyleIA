@@ -1,6 +1,8 @@
 # StyleAI / SceneMe Backend
 
-Node 20 API for the SceneMe iOS app (generation, auth, uploads, legal pages).
+Node 20 API for SceneMe, a Zevynta Labs LLC product (generation, auth, uploads, legal pages).
+
+Company website: https://zevyntalabs.com/
 
 ## Run locally
 
@@ -41,6 +43,8 @@ npm test                  # both
 - `APPLE_CLIENT_ID`: the Sign in with Apple audience. For this app it should match the configured app/service identifier, for example `com.sceneme.app`.
 - `GOOGLE_CLIENT_ID`: the Google OAuth iOS client ID (ends with `.apps.googleusercontent.com`). Must match `GIDClientID` in the iOS app.
 - `FAL_KEY`: server-side fal.ai API key. Never put this in the iOS app.
+- `OPENAI_API_KEY`: server-side OpenAI key used only to improve custom scene templates. Never put it in the iOS app.
+- `OPENAI_TEMPLATE_MODEL`: defaults to `gpt-5-mini` for low-cost structured template output.
 - `FAL_MODEL`: defaults to `fal-ai/flux-pro/kontext` (~$0.04/image).
 - `FAL_MULTI_MODEL`: companion path; defaults to `fal-ai/flux-pro/kontext/multi` (~$0.04). Use `…/max/multi` (~$0.08) only if needed.
 - `FAL_KONTEXT_NUM_INFERENCE_STEPS`: solo step count. Defaults to `36` (pro is priced per image).
@@ -95,9 +99,13 @@ Supported `subjectGender` values are `male`, `female`, and `nonbinary`. The back
 - `POST /v1/auth/google`
 - `POST /v1/upload/presign`
 - `PUT /v1/upload/:uploadId?token=...`
-- `POST /v1/jobs`
-- `GET /v1/jobs/:jobId`
-- `DELETE /v1/jobs/:jobId`
+- `GET /v1/scenes`
+- `POST /v1/templates/improve`
+- `POST /v1/scene-jobs`
+- `GET /v1/scene-jobs/:jobId`
+- `DELETE /v1/scene-jobs/:jobId`
+- `POST /v1/scene-jobs/:jobId/reroll`
+- `POST /v1/scene-jobs/:jobId/video`
 - `GET /v1/history?page=&limit=`
 - `DELETE /v1/account`
 - `GET /uploads/:fileName`

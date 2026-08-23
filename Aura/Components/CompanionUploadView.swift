@@ -64,15 +64,22 @@ struct CompanionUploadView: View {
 
                 if companionKind.wrappedValue == .friend {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("FRIEND'S GENDER")
+                        Text("FRIEND'S GENDER · REQUIRED")
                             .font(.system(size: 10, weight: .heavy))
                             .tracking(1.6)
                             .foregroundStyle(SceneMeTheme.faintText)
 
                         HStack(spacing: 8) {
-                            ForEach(SubjectGender.allCases) { gender in
+                            ForEach([SubjectGender.male, SubjectGender.female]) { gender in
                                 companionGenderChip(gender)
                             }
+                        }
+
+                        if viewModel.request?.companionGender == .auto {
+                            Text("Choose the person shown in the second photo so the generator preserves both people correctly.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(SceneMeTheme.gold)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -111,7 +118,19 @@ struct CompanionUploadView: View {
         .onChange(of: isEnabled) { _, enabled in
             if !enabled {
                 viewModel.removeCompanion()
+            } else if viewModel.request?.companionKind == .friend,
+                      viewModel.request?.companionGender == .auto,
+                      let subjectGender = viewModel.request?.subjectGender,
+                      subjectGender != .auto {
+                viewModel.request?.companionGender = subjectGender
             }
+        }
+        .onChange(of: companionKind.wrappedValue) { _, kind in
+            guard kind == .friend,
+                  viewModel.request?.companionGender == .auto,
+                  let subjectGender = viewModel.request?.subjectGender,
+                  subjectGender != .auto else { return }
+            viewModel.request?.companionGender = subjectGender
         }
         .onChange(of: viewModel.companionItem) { _, _ in
             Task {

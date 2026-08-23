@@ -594,23 +594,30 @@ struct ResultView: View {
 
     /// Blends the full-strength grade with the original at the slider strength.
     private func applyIntensity() async {
+        let filter = selectedFilter
+        let intensity = filterIntensity
         guard
-            selectedFilter != .original,
+            filter != .original,
             let base = viewModel.resultImage,
-            let full = filteredCache[selectedFilter]
+            let full = filteredCache[filter]
         else {
             gradedImage = nil
             return
         }
 
-        if filterIntensity >= 0.995 {
-            gradedImage = full
+        if intensity >= 0.995 {
+            if selectedFilter == filter, filterIntensity == intensity {
+                gradedImage = full
+            }
             return
         }
 
-        let intensity = filterIntensity
-        gradedImage = await Task.detached(priority: .userInitiated) {
+        let output = await Task.detached(priority: .userInitiated) {
             CinematicFilterEngine.blend(base, full, intensity: intensity)
         }.value
+        guard !Task.isCancelled,
+              selectedFilter == filter,
+              filterIntensity == intensity else { return }
+        gradedImage = output
     }
 }
