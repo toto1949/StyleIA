@@ -13,7 +13,9 @@ const uploadsDirectory = resolveArgument("--uploads-dir", process.env.STYLEAI_UP
 const outputPath = resolveArgument("--output", "./data/styleai.private-storage.json");
 const source = JSON.parse(await fs.readFile(sourcePath, "utf8"));
 const uploads = Array.isArray(source.uploads) ? source.uploads : [];
+const jobs = Array.isArray(source.jobs) ? source.jobs : [];
 const plan = [];
+const resultPlan = [];
 
 for (const upload of uploads) {
   assertUUID(upload.id, "upload id");
@@ -25,13 +27,35 @@ for (const upload of uploads) {
   plan.push({ upload, candidate, exists });
 }
 
+for (const job of jobs) {
+  assertUUID(job.jobId, "public job id");
+  assertUUID(job.userId, "job owner");
+  const fallbackImageURL = [
+    ...(Array.isArray(job.resultURLs) ? job.resultURLs : []),
+    ...(Array.isArray(job.looks) ? job.looks.map((look) => look?.imageURL) : [])
+  ].find(isTrustedProviderURL);
+  if (isTrustedProviderURL(job.imageURL || fallbackImageURL)) {
+    resultPlan.push({ job, kind: "image", sourceURL: job.imageURL || fallbackImageURL, slot: "primary" });
+  }
+  if (isTrustedProviderURL(job.videoURL)) {
+    resultPlan.push({ job, kind: "video", sourceURL: job.videoURL, slot: "primary" });
+  }
+  for (const [index, clip] of (Array.isArray(job.videoClips) ? job.videoClips : []).entries()) {
+    if (isTrustedProviderURL(clip?.videoURL)) {
+      resultPlan.push({ job, clip, kind: "video", sourceURL: clip.videoURL, slot: `clip-${index + 1}` });
+    }
+  }
+}
+
 const summary = {
   mode: apply ? "apply" : "dry-run",
   source: sourcePath,
   output: outputPath,
   uploads: uploads.length,
   recoverable: plan.filter((item) => item.exists).length,
-  missing: plan.filter((item) => !item.exists).length
+  missing: plan.filter((item) => !item.exists).length,
+  privateResultCandidates: resultPlan.length,
+  excludedLegacyResultReferences: countExcludedResultReferences(jobs)
 };
 console.log(JSON.stringify(summary, null, 2));
 
@@ -106,21 +130,55 @@ for (const item of plan) {
   removeLegacyMediaFields(item.upload);
 }
 
-for (const job of Array.isArray(source.jobs) ? source.jobs : []) {
+let unavailableResults = 0;
+for (const item of resultPlan) {
+  const suffix = item.slot === "primary" ? `result.${item.kind === "video" ? "mp4" : "jpg"}` : `clips/${item.slot}.mp4`;
+  const key = `private/${item.job.userId}/results/${item.job.jobId}/${suffix}`;
+  try {
+    const stored = await downloadProviderResult(item.sourceURL, item.kind);
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: stored.body,
+      ContentType: stored.contentType,
+      ContentLength: stored.body.length,
+      CacheControl: "private, no-store",
+      ServerSideEncryption: "AES256",
+      Metadata: { sha256: crypto.createHash("sha256").update(stored.body).digest("hex") }
+    }));
+    if (item.clip) item.clip.videoObjectKey = key;
+    else if (item.kind === "video") item.job.videoObjectKey = key;
+    else item.job.imageObjectKey = key;
+  } catch (error) {
+    unavailableResults += 1;
+    if (!allowMissing) throw error;
+    item.job.historicalResultUnavailable = true;
+  }
+}
+
+for (const job of jobs) {
   if (keyChanges.has(job.s3Key)) job.s3Key = keyChanges.get(job.s3Key);
   if (keyChanges.has(job.companionS3Key)) job.companionS3Key = keyChanges.get(job.companionS3Key);
   delete job.localPath;
   delete job.companionLocalPath;
   delete job.originalPhotoURL;
   delete job.companionPhotoURL;
-  // Historical provider URLs are intentionally not copied into the database
-  // as durable/private media. A separate result-ingestion pass must either
-  // copy reachable results to object keys or mark them unavailable.
   delete job.sourceImageURL;
+  delete job.imageURL;
+  delete job.videoURL;
+  delete job.resultURLs;
+  delete job.looks;
+  if (Array.isArray(job.videoClips)) {
+    job.videoClips = job.videoClips.map((clip) => {
+      const sanitized = { ...clip };
+      delete sanitized.videoURL;
+      return sanitized;
+    });
+  }
 }
 
 await fs.writeFile(outputPath, `${JSON.stringify(source, null, 2)}\n`, { mode: 0o600 });
-console.log(JSON.stringify({ ...summary, written: outputPath }, null, 2));
+console.log(JSON.stringify({ ...summary, unavailableResults, written: outputPath }, null, 2));
 
 function removeLegacyMediaFields(upload) {
   delete upload.localPath;
@@ -153,6 +211,52 @@ function required(name) {
 
 function boolean(value) {
   return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
+}
+
+function isTrustedProviderURL(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && (url.hostname === "fal.media" || url.hostname.endsWith(".fal.media"));
+  } catch {
+    return false;
+  }
+}
+
+function countExcludedResultReferences(rows) {
+  let count = 0;
+  for (const job of rows) {
+    const values = [
+      job.imageURL,
+      job.videoURL,
+      ...(Array.isArray(job.resultURLs) ? job.resultURLs : []),
+      ...(Array.isArray(job.looks) ? job.looks.map((look) => look?.imageURL) : []),
+      ...(Array.isArray(job.videoClips) ? job.videoClips.map((clip) => clip?.videoURL) : [])
+    ];
+    count += values.filter((value) => value && !isTrustedProviderURL(value)).length;
+  }
+  return count;
+}
+
+async function downloadProviderResult(sourceURL, kind) {
+  if (!isTrustedProviderURL(sourceURL)) throw new Error("Untrusted legacy result URL.");
+  const maxBytes = kind === "video" ? 250_000_000 : 30_000_000;
+  const response = await fetch(sourceURL, {
+    redirect: "error",
+    signal: AbortSignal.timeout(kind === "video" ? 120_000 : 30_000)
+  });
+  if (!response.ok || !response.body) throw new Error(`Legacy provider result download failed (${response.status}).`);
+  const contentType = String(response.headers.get("content-type") || "").split(";", 1)[0].toLowerCase();
+  const expectedPrefix = kind === "video" ? "video/" : "image/";
+  if (!contentType.startsWith(expectedPrefix)) throw new Error("Legacy result had an unexpected content type.");
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of response.body) {
+    const bytes = Buffer.from(chunk);
+    total += bytes.length;
+    if (total > maxBytes) throw new Error("Legacy result exceeded the configured size limit.");
+    chunks.push(bytes);
+  }
+  return { body: Buffer.concat(chunks), contentType: kind === "video" ? "video/mp4" : contentType };
 }
 
 function assertUUID(value, label) {
