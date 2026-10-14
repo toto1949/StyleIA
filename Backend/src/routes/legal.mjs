@@ -11,12 +11,19 @@ export function serveTermsOfUse(request, response) {
   sendHTML(request, response, termsHTML());
 }
 
+export function serveSupport(request, response) {
+  sendHTML(request, response, supportHTML());
+}
+
 function sendHTML(request, response, html) {
   const body = Buffer.from(html, "utf8");
   response.writeHead(200, {
     "Content-Type": "text/html; charset=utf-8",
     "Content-Length": body.length,
-    "Cache-Control": "public, max-age=300"
+    "Cache-Control": "public, max-age=300",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer"
   });
   // App Store / link checkers often probe with HEAD; return headers only.
   if (request.method === "HEAD") {
@@ -54,7 +61,7 @@ function layout(title, body) {
 <body>
   <main>
     <h1>${title}</h1>
-    <p class="meta">SceneMe, a Zevynta Labs LLC product · Last updated August 23, 2026</p>
+    <p class="meta">SceneMe, a Zevynta Labs LLC product · Last updated October 13, 2026</p>
     ${body}
   </main>
 </body>
@@ -67,31 +74,32 @@ function privacyHTML() {
 
     <h2>Information we collect</h2>
     <ul>
-      <li><strong>Account data</strong> — email and authentication identifiers when you sign in with email, Apple, or Google.</li>
+      <li><strong>Account data</strong> — name, email, authentication identifiers, and an encrypted Apple revocation credential when you sign in with Apple.</li>
       <li><strong>Photos you upload</strong> — images you select to generate scenes, optional companion photos, and derived results.</li>
       <li><strong>Generation inputs</strong> — scene choices, time of day, weather, pose, custom scene text, spoken lines for Talking video, and similar creative settings.</li>
       <li><strong>Usage data</strong> — generation history, subscription status from Apple, and basic operational logs needed to run the service.</li>
-      <li><strong>Device / app data</strong> — standard diagnostics needed for crash fixing and delivery (not used for cross-app tracking).</li>
     </ul>
 
     <h2>How we use information</h2>
     <ul>
       <li>To generate images and short videos you request (including optional AI text-to-speech for Talking clips).</li>
       <li>To operate accounts, subscriptions, restore purchases, and provide support.</li>
-      <li>To improve reliability, safety, and product quality.</li>
+      <li>To protect the service, enforce plan limits, diagnose failures, and provide support.</li>
     </ul>
 
-    <h2>Processors</h2>
-    <p>We use infrastructure and AI providers to process requests and generate media (for example cloud hosting, OpenAI for optional template improvement, and fal.ai models for image and video generation). Content is processed to fulfill your request and is not sold.</p>
+    <h2>AI processing and consent</h2>
+    <p>SceneMe asks for your explicit permission before sending personal content to third-party AI providers. When you allow it, <strong>OpenAI</strong> receives the selected photo, optional companion photo, and user-written text for safety screening; OpenAI also receives custom-scene text for enhancement only when you tap “Improve with OpenAI.” After safety screening, <strong>fal.ai</strong> receives the selected photo, optional companion photo, and the instructions needed to generate images, videos, or optional speech. Our cloud host stores account records, uploads, and results so the app can operate. We do not sell this content or use it for cross-app tracking.</p>
+    <p>You can decline without sharing content. You can also withdraw permission at any time in Profile → AI Data Sharing; SceneMe will stop sending new requests unless you grant permission again.</p>
 
     <h2>Retention</h2>
-    <p>Uploaded photos and generated results are kept so you can view history and re-use features such as Animate. You may delete your account in the app, which removes associated account data we control. Cached CDN media may expire according to provider limits.</p>
+    <p>We keep your account record, uploaded photos, and creative inputs until you delete your account. Generated results remain in history until you delete that result or your account. In-app account deletion removes the associated account, uploads, generations, usage records, and stored Apple revocation credential from systems we control. Processors may retain short-lived operational or security copies under their own retention policies; requests already in progress may finish before deletion propagates.</p>
 
     <h2>Your choices</h2>
     <ul>
       <li>You control which photos you upload.</li>
+      <li>You can review or withdraw AI processing permission in Profile.</li>
       <li>You can delete your account from Profile.</li>
-      <li>You manage subscriptions in Apple ID settings.</li>
+      <li>You manage subscriptions in Apple ID settings. Deleting a SceneMe account does not cancel an Apple subscription.</li>
     </ul>
 
     <h2>Children</h2>
@@ -145,5 +153,29 @@ function termsHTML() {
     <p>Privacy details: <a href="${config.publicBaseURL}/privacy">Privacy Policy</a>.</p>
 
     <p>© 2026 Zevynta Labs LLC. All rights reserved.</p>
+  `);
+}
+
+function supportHTML() {
+  return layout("SceneMe Support", `
+    <p>Need help with SceneMe? Contact Zevynta Labs LLC at <a href="mailto:support@sceneme.app">support@sceneme.app</a>.</p>
+
+    <h2>When you contact us</h2>
+    <p>Include your SceneMe account email, app version, device model, iOS version, and a short description of what happened. Do not email passwords, authentication codes, payment credentials, private photos, or signed media links.</p>
+
+    <h2>Generation help</h2>
+    <ul>
+      <li>If a generation is still processing, keep the job in History and try again after reconnecting.</li>
+      <li>If a generation fails, use the in-app retry option. SceneMe does not consume an image allowance for a job the backend records as failed.</li>
+      <li>For a privacy or safety concern, include “Privacy” or “Safety” in the email subject.</li>
+    </ul>
+
+    <h2>Subscriptions</h2>
+    <p>Purchases are billed by Apple. Use Restore Purchases in SceneMe if an active purchase is missing. Manage or cancel a subscription in Apple ID settings. Deleting your SceneMe account does not cancel an Apple subscription.</p>
+
+    <h2>Account and privacy</h2>
+    <p>Account deletion is available in SceneMe under Profile. See the <a href="${config.publicBaseURL}/privacy">Privacy Policy</a> and <a href="${config.publicBaseURL}/terms">Terms of Use</a> for more information.</p>
+
+    <p>Company website: <a href="https://zevyntalabs.com/">zevyntalabs.com</a></p>
   `);
 }
