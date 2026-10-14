@@ -1,0 +1,12 @@
+drop table if exists job_events;
+drop table if exists app_store_notifications;
+drop table if exists app_store_transactions;
+drop table if exists subscription_entitlements;
+drop table if exists usage_counters;
+drop table if exists generation_results;
+drop table if exists generation_jobs;
+drop table if exists uploads;
+drop table if exists sessions;
+drop table if exists auth_identities;
+drop table if exists users;
+drop table if exists schema_migrations;

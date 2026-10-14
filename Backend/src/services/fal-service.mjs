@@ -2,6 +2,15 @@ import fs from "node:fs/promises";
 import { fal } from "@fal-ai/client";
 import { config } from "../config.mjs";
 
+let falClient = fal;
+
+export function setFalClientForTesting(client) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("The fal client cannot be replaced in production.");
+  }
+  falClient = client;
+}
+
 export class FalBillingError extends Error {
   constructor(message, cause) {
     super(message);
@@ -11,6 +20,36 @@ export class FalBillingError extends Error {
     this.body = cause?.body;
     this.cause = cause;
   }
+}
+
+export class FalRequestPendingError extends Error {
+  constructor(message, { requestId, model, phase }) {
+    super(message);
+    this.name = "FalRequestPendingError";
+    this.requestId = requestId;
+    this.model = model;
+    this.phase = phase;
+  }
+}
+
+export class FalSafetyError extends Error {
+  constructor() {
+    super("Generation was blocked by the provider's safety review. Try a different photo or scene.");
+    this.name = "FalSafetyError";
+  }
+}
+
+export function isFalRequestPendingError(error) {
+  return error instanceof FalRequestPendingError;
+}
+
+export async function cancelFalRequest(model, requestId) {
+  if (!config.falKey || !model || !requestId) {
+    return false;
+  }
+  falClient.config({ credentials: config.falKey });
+  await falClient.queue.cancel(model, { requestId });
+  return true;
 }
 
 // How long an uploaded fal CDN URL stays reusable (uploads expire after 1 day).
@@ -34,13 +73,17 @@ export async function generateScene({
   companionPath = null,
   companionContentType = "image/jpeg",
   originalPhotoURL,
+  companionPhotoURL = null,
   prompt,
   seed,
+  imageQuality = "standard",
   jobId,
   cachedFalImageURL = null,
   cachedCompanionFalImageURL = null,
   onFalImageUploaded,
   onCompanionFalImageUploaded,
+  onProviderState,
+  resumeProvider = null,
   onProgress
 }) {
   if (config.enableMockGeneration) {
@@ -53,46 +96,75 @@ export async function generateScene({
     throw new Error("FAL_KEY is not configured.");
   }
 
-  fal.config({ credentials: config.falKey });
+  falClient.config({ credentials: config.falKey });
 
   try {
+    if (resumeProvider?.requestId && resumeProvider?.model) {
+      const resumed = await runQueuedFalRequest({
+        model: resumeProvider.model,
+        requestId: resumeProvider.requestId,
+        phase: "scene",
+        jobId,
+        onProgress,
+        progressPercent: 60
+      });
+      const resumedImageURL = extractImageURL(resumed?.data ?? resumed);
+      if (!resumedImageURL) {
+        throw new Error("fal.ai result did not include an image URL.");
+      }
+      await onProgress?.(95);
+      return resumedImageURL;
+    }
+
     let userImageURL = cachedFalImageURL;
     if (userImageURL) {
       logFal("upload_reused_cdn_url", { jobId, role: "subject", imageHost: safeHost(userImageURL) });
     } else {
-      logFal("upload_start", { jobId, role: "subject", contentType, hasCompanion: Boolean(companionPath) });
-      userImageURL = await uploadToFalCdn({ imagePath, contentType });
-      await onFalImageUploaded?.(userImageURL);
+      logFal("upload_start", {
+        jobId,
+        role: "subject",
+        contentType,
+        hasCompanion: Boolean(companionPath || companionPhotoURL)
+      });
+      userImageURL = imagePath
+        ? await uploadToFalCdn({ imagePath, contentType })
+        : originalPhotoURL;
+      if (imagePath) {
+        await onFalImageUploaded?.(userImageURL);
+      }
       logFal("upload_complete", { jobId, role: "subject", imageHost: safeHost(userImageURL) });
     }
 
     let companionImageURL = null;
-    if (companionPath) {
+    if (companionPath || companionPhotoURL) {
       companionImageURL = cachedCompanionFalImageURL;
       if (companionImageURL) {
         logFal("upload_reused_cdn_url", { jobId, role: "companion", imageHost: safeHost(companionImageURL) });
       } else {
         logFal("upload_start", { jobId, role: "companion", contentType: companionContentType });
-        companionImageURL = await uploadToFalCdn({
-          imagePath: companionPath,
-          contentType: companionContentType
-        });
-        await onCompanionFalImageUploaded?.(companionImageURL);
+        companionImageURL = companionPath
+          ? await uploadToFalCdn({ imagePath: companionPath, contentType: companionContentType })
+          : companionPhotoURL;
+        if (companionPath) {
+          await onCompanionFalImageUploaded?.(companionImageURL);
+        }
         logFal("upload_complete", { jobId, role: "companion", imageHost: safeHost(companionImageURL) });
       }
     }
-    onProgress?.(20);
+    await onProgress?.(20);
 
     const imageURL = await runFalRequestWithFallback({
       prompt,
       userImageURL,
       companionImageURL,
       seed,
+      imageQuality,
       jobId,
+      onProviderState,
       onProgress
     });
 
-    onProgress?.(95);
+    await onProgress?.(95);
     return imageURL;
   } catch (error) {
     const operationalError = normalizeFalOperationalError(error);
@@ -114,6 +186,8 @@ export async function generateSceneVideo({
   prompt,
   jobId,
   onProgress,
+  onProviderState,
+  resumeProvider = null,
   spokenLine = "",
   subjectGender = "auto",
   motionStyle = "cinematic"
@@ -133,17 +207,33 @@ export async function generateSceneVideo({
     throw new Error("FAL_KEY is not configured.");
   }
 
-  fal.config({ credentials: config.falKey });
+  falClient.config({ credentials: config.falKey });
 
   try {
-    let videoURL = await runVideoRequest({ imageURL, prompt, jobId, onProgress });
+    const resumePhase = resumeProvider?.phase || null;
+    let videoURL = resumePhase && resumePhase !== "video"
+      ? resumeProvider.intermediateVideoURL
+      : await runVideoRequest({
+        imageURL,
+        prompt,
+        jobId,
+        onProgress,
+        onProviderState,
+        resumeProvider: resumePhase === "video" ? resumeProvider : null
+      });
+    if (!videoURL) {
+      throw new Error("The durable video job is missing its intermediate video URL.");
+    }
+    await onProviderState?.({ intermediateVideoURL: videoURL });
     videoURL = await maybeAttachTalkingAudio({
       videoURL,
       spokenLine,
       subjectGender,
       motionStyle,
       jobId,
-      onProgress
+      onProgress,
+      onProviderState,
+      resumeProvider
     });
     return videoURL;
   } catch (error) {
@@ -159,14 +249,23 @@ export async function generateSceneVideo({
       // Retry without optional tuning params in case the configured model
       // doesn't support duration/resolution inputs.
       logFal("video_retry_minimal_input", { jobId });
-      let videoURL = await runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode: true });
+      let videoURL = await runVideoRequest({
+        imageURL,
+        prompt,
+        jobId,
+        onProgress,
+        onProviderState,
+        safeMode: true
+      });
+      await onProviderState?.({ intermediateVideoURL: videoURL });
       videoURL = await maybeAttachTalkingAudio({
         videoURL,
         spokenLine,
         subjectGender,
         motionStyle,
         jobId,
-        onProgress
+        onProgress,
+        onProviderState
       });
       return videoURL;
     }
@@ -176,14 +275,18 @@ export async function generateSceneVideo({
 }
 
 /// For Talking clips with a spoken line: TTS → lip-sync (preferred) or mux fallback.
-/// Failures are logged and the silent video is returned so animate still succeeds.
+/// A requested talking clip must contain audio. Returning a silent video would
+/// falsely report success for a paid feature, so both lip-sync paths must fail
+/// visibly when neither can produce a valid result.
 async function maybeAttachTalkingAudio({
   videoURL,
   spokenLine,
   subjectGender,
   motionStyle,
   jobId,
-  onProgress
+  onProgress,
+  onProviderState,
+  resumeProvider = null
 }) {
   const line = String(spokenLine || "").trim();
   if (normalizeMotionStyleLocal(motionStyle) !== "talking" || !line) {
@@ -191,26 +294,62 @@ async function maybeAttachTalkingAudio({
   }
 
   try {
-    onProgress?.(80);
-    const audioURL = await synthesizeSpeech({ text: line, subjectGender, jobId });
-    onProgress?.(88);
+    await onProgress?.(80);
+    const resumePhase = resumeProvider?.phase || null;
+    const audioURL = ["lipsync", "mux"].includes(resumePhase)
+      ? resumeProvider.intermediateAudioURL
+      : await synthesizeSpeech({
+        text: line,
+        subjectGender,
+        jobId,
+        onProviderState,
+        resumeProvider: resumePhase === "tts" ? resumeProvider : null
+      });
+    if (!audioURL) {
+      throw new Error("The durable talking-video job is missing its intermediate audio URL.");
+    }
+    await onProviderState?.({ intermediateAudioURL: audioURL });
+    await onProgress?.(88);
     try {
-      const syncedURL = await lipsyncVideoToAudio({ videoURL, audioURL, jobId });
-      onProgress?.(95);
+      if (resumePhase === "mux") {
+        const mergedURL = await mergeAudioOntoVideo({
+          videoURL,
+          audioURL,
+          jobId,
+          onProviderState,
+          resumeProvider
+        });
+        await onProgress?.(95);
+        return mergedURL || videoURL;
+      }
+      const syncedURL = await lipsyncVideoToAudio({
+        videoURL,
+        audioURL,
+        jobId,
+        onProviderState,
+        resumeProvider: resumePhase === "lipsync" ? resumeProvider : null
+      });
+      await onProgress?.(95);
       return syncedURL || videoURL;
     } catch (lipsyncError) {
+      if (isFalRequestPendingError(lipsyncError)) {
+        throw lipsyncError;
+      }
       logFal("lipsync_failed_falling_back_to_mux", { jobId, ...serializeFalError(lipsyncError) });
-      const mergedURL = await mergeAudioOntoVideo({ videoURL, audioURL, jobId });
-      onProgress?.(95);
+      const mergedURL = await mergeAudioOntoVideo({ videoURL, audioURL, jobId, onProviderState });
+      await onProgress?.(95);
       return mergedURL || videoURL;
     }
   } catch (error) {
+    if (isFalRequestPendingError(error)) {
+      throw error;
+    }
     logFal("talking_audio_failed", { jobId, ...serializeFalError(error) });
-    return videoURL;
+    throw new Error("SceneMe could not add speech to this video. Please retry.", { cause: error });
   }
 }
 
-async function synthesizeSpeech({ text, subjectGender, jobId }) {
+async function synthesizeSpeech({ text, subjectGender, jobId, onProviderState, resumeProvider }) {
   const voice = voiceForGender(subjectGender);
   const gender = String(subjectGender || "").trim().toLowerCase();
   // Conversational interview tone — slightly lower stability = more natural inflection.
@@ -228,13 +367,19 @@ async function synthesizeSpeech({ text, subjectGender, jobId }) {
     chars: text.length
   });
 
-  const result = await fal.subscribe(config.falTtsModel, {
+  const model = resumeProvider?.model || config.falTtsModel;
+  const result = await runQueuedFalRequest({
+    model,
     input: {
       text,
       voice,
       ...tone
     },
-    logs: true
+    requestId: resumeProvider?.requestId || null,
+    phase: "tts",
+    jobId,
+    onProviderState,
+    progressPercent: 80
   });
 
   const audioURL = extractAudioURL(result?.data ?? result);
@@ -246,7 +391,7 @@ async function synthesizeSpeech({ text, subjectGender, jobId }) {
   return audioURL;
 }
 
-async function lipsyncVideoToAudio({ videoURL, audioURL, jobId }) {
+async function lipsyncVideoToAudio({ videoURL, audioURL, jobId, onProviderState, resumeProvider }) {
   logFal("lipsync_start", {
     jobId,
     model: config.falLipsyncModel,
@@ -254,13 +399,19 @@ async function lipsyncVideoToAudio({ videoURL, audioURL, jobId }) {
     audioHost: safeHost(audioURL)
   });
 
-  const result = await fal.subscribe(config.falLipsyncModel, {
+  const model = resumeProvider?.model || config.falLipsyncModel;
+  const result = await runQueuedFalRequest({
+    model,
     input: {
       video_url: videoURL,
       audio_url: audioURL,
       sync_mode: "cut_off"
     },
-    logs: true
+    requestId: resumeProvider?.requestId || null,
+    phase: "lipsync",
+    jobId,
+    onProviderState,
+    progressPercent: 88
   });
 
   const syncedURL = extractVideoURL(result?.data ?? result);
@@ -272,7 +423,7 @@ async function lipsyncVideoToAudio({ videoURL, audioURL, jobId }) {
   return syncedURL;
 }
 
-async function mergeAudioOntoVideo({ videoURL, audioURL, jobId }) {
+async function mergeAudioOntoVideo({ videoURL, audioURL, jobId, onProviderState, resumeProvider }) {
   logFal("audio_merge_start", {
     jobId,
     model: config.falMergeAudioVideoModel,
@@ -280,13 +431,19 @@ async function mergeAudioOntoVideo({ videoURL, audioURL, jobId }) {
     audioHost: safeHost(audioURL)
   });
 
-  const result = await fal.subscribe(config.falMergeAudioVideoModel, {
+  const model = resumeProvider?.model || config.falMergeAudioVideoModel;
+  const result = await runQueuedFalRequest({
+    model,
     input: {
       video_url: videoURL,
       audio_url: audioURL,
       start_offset: 0.15
     },
-    logs: true
+    requestId: resumeProvider?.requestId || null,
+    phase: "mux",
+    jobId,
+    onProviderState,
+    progressPercent: 90
   });
 
   const mergedURL = extractVideoURL(result?.data ?? result);
@@ -316,10 +473,26 @@ function normalizeMotionStyleLocal(value) {
     : "cinematic";
 }
 
-async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode = false }) {
+async function runVideoRequest({
+  imageURL,
+  prompt,
+  jobId,
+  onProgress,
+  onProviderState,
+  resumeProvider = null,
+  safeMode = false
+}) {
+  const boundedPrompt = truncateUTF8(prompt, 2_048);
+  if (boundedPrompt !== prompt) {
+    logFal("video_prompt_truncated", {
+      jobId,
+      originalBytes: Buffer.byteLength(String(prompt || ""), "utf8"),
+      submittedBytes: Buffer.byteLength(boundedPrompt, "utf8")
+    });
+  }
   const input = {
     image_url: imageURL,
-    prompt
+    prompt: boundedPrompt
   };
 
   if (!safeMode) {
@@ -343,12 +516,18 @@ async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode =
     safeMode
   });
 
-  const result = await fal.subscribe(config.falVideoModel, {
+  const model = resumeProvider?.model || config.falVideoModel;
+  const result = await runQueuedFalRequest({
+    model,
     input,
-    logs: true,
+    requestId: resumeProvider?.requestId || null,
+    phase: "video",
+    jobId,
+    onProviderState,
+    onProgress,
+    progressPercent: 60,
     onQueueUpdate: (update) => {
       if (update.status === "IN_PROGRESS") {
-        onProgress?.(60);
         logFal("video_queue_update", {
           jobId,
           status: update.status,
@@ -367,38 +546,50 @@ async function runVideoRequest({ imageURL, prompt, jobId, onProgress, safeMode =
 }
 
 /// paramMode:
-///   full     — steps (solo) + guidance + aspect + enhance_prompt=false
-///   reduced  — keep quality-critical params, drop steps (schema-safe for multi)
+///   full     — current model-specific quality, framing and safety parameters
+///   reduced  — keep framing/guidance, drop dev-only inference steps
 ///   minimal  — prompt + images only (last resort after ValidationError)
 async function runFalRequest({
   prompt,
   userImageURL,
   companionImageURL,
   seed,
+  imageQuality = "standard",
   jobId,
+  onProviderState,
   onProgress,
   paramMode = "full"
 }) {
   const isMulti = Boolean(companionImageURL);
-  const model = isMulti ? config.falMultiModel : imageModel();
+  const isEco = !isMulti && config.ecoMode;
+  const isPremium = imageQuality === "premium";
+  const model = isPremium
+    ? (isMulti ? config.falPremiumMultiModel : config.falPremiumModel)
+    : (isMulti ? config.falMultiModel : imageModel());
 
   const input = isMulti
     ? { image_urls: [userImageURL, companionImageURL], prompt }
     : { image_url: userImageURL, prompt };
 
   if (paramMode !== "minimal") {
-    // Never let fal rewrite our carefully crafted identity locks.
-    input.enhance_prompt = false;
-    // Vertical editorial frame for head-to-shoes compositions.
-    input.aspect_ratio = config.falImageAspectRatio;
+    if (isEco) {
+      input.resolution_mode = config.falImageAspectRatio;
+      input.enable_safety_checker = true;
+    } else {
+      // Never let Kontext Pro rewrite our carefully crafted identity locks.
+      input.enhance_prompt = false;
+      // Vertical editorial frame for head-to-shoes compositions.
+      input.aspect_ratio = config.falImageAspectRatio;
+      input.safety_tolerance = "2";
+    }
     // Slightly stronger guidance on multi so both faces stay locked to sources.
     input.guidance_scale = isMulti ? config.falMultiGuidance : config.falKontextGuidance;
     if (Number.isFinite(seed)) {
       input.seed = seed;
     }
-    // Multi-image Kontext endpoints reject num_inference_steps (not in schema).
-    // Sending it triggers ValidationError → quality drop. Only send steps on solo.
-    if (!isMulti && paramMode === "full") {
+    // Only Kontext dev exposes num_inference_steps. Kontext Pro (including
+    // multi-image) does not accept it in the current published API schema.
+    if (isEco && paramMode === "full") {
       input.num_inference_steps = config.falKontextSteps;
     }
   }
@@ -407,18 +598,23 @@ async function runFalRequest({
     jobId,
     model,
     isMulti,
+    isPremium,
     paramMode,
     guidance: input.guidance_scale ?? null,
-    aspectRatio: input.aspect_ratio ?? null,
+    aspectRatio: input.aspect_ratio ?? input.resolution_mode ?? null,
     steps: input.num_inference_steps ?? null
   });
 
-  const result = await fal.subscribe(model, {
+  const result = await runQueuedFalRequest({
+    model,
     input,
-    logs: true,
+    phase: "scene",
+    jobId,
+    onProviderState,
+    onProgress,
+    progressPercent: 60,
     onQueueUpdate: (update) => {
       if (update.status === "IN_PROGRESS") {
-        onProgress?.(60);
         logFal("queue_update", {
           jobId,
           model,
@@ -464,9 +660,94 @@ async function runFalRequestWithFallback(args) {
   }
 }
 
+async function runQueuedFalRequest({
+  model,
+  input,
+  requestId: existingRequestId = null,
+  phase,
+  jobId,
+  onProviderState,
+  onProgress,
+  progressPercent,
+  onQueueUpdate
+}) {
+  let requestId = existingRequestId;
+  if (!requestId) {
+    const submitted = await falClient.queue.submit(model, {
+      input,
+      startTimeout: Math.max(2, Math.floor(config.providerTimeoutMs / 1_000))
+    });
+    requestId = submitted?.request_id;
+    if (!requestId) {
+      throw new Error("fal.ai queue submission did not return a request ID.");
+    }
+    await onProviderState?.({ requestId, model, phase });
+    logFal("queue_submitted", { jobId, model, phase, requestId });
+  } else {
+    logFal("queue_resumed", { jobId, model, phase, requestId });
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.providerTimeoutMs);
+  const progressUpdates = [];
+  try {
+    await falClient.queue.subscribeToStatus(model, {
+      requestId,
+      logs: true,
+      abortSignal: controller.signal,
+      onQueueUpdate: (update) => {
+        if (update.status === "IN_PROGRESS") {
+          progressUpdates.push(Promise.resolve(onProgress?.(progressPercent)));
+        }
+        onQueueUpdate?.(update);
+      }
+    });
+    await Promise.allSettled(progressUpdates);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new FalRequestPendingError(
+        "The provider request is still running and will be checked again.",
+        { requestId, model, phase }
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const result = await falClient.queue.result(model, { requestId });
+  assertFalOutputSafe(result?.data ?? result);
+  return result;
+}
+
+function assertFalOutputSafe(payload) {
+  const flags = payload?.has_nsfw_concepts;
+  if (flags === true || (Array.isArray(flags) && flags.some(Boolean))) {
+    throw new FalSafetyError();
+  }
+}
+
+function truncateUTF8(value, maxBytes) {
+  const input = String(value || "");
+  if (Buffer.byteLength(input, "utf8") <= maxBytes) {
+    return input;
+  }
+  let output = "";
+  let bytes = 0;
+  for (const character of input) {
+    const characterBytes = Buffer.byteLength(character, "utf8");
+    if (bytes + characterBytes > maxBytes) {
+      break;
+    }
+    output += character;
+    bytes += characterBytes;
+  }
+  return output;
+}
+
 async function uploadToFalCdn({ imagePath, contentType }) {
   const data = await fs.readFile(imagePath);
-  const url = await fal.storage.upload(
+  const url = await falClient.storage.upload(
     new Blob([data], { type: contentType }),
     { lifecycle: { expiresIn: "1d" } }
   );
@@ -480,7 +761,7 @@ async function uploadToFalCdn({ imagePath, contentType }) {
 
 async function mockProgress(onProgress) {
   for (const percent of [20, 45, 70, 90]) {
-    onProgress?.(percent);
+    await onProgress?.(percent);
     await new Promise((resolve) => setTimeout(resolve, 600));
   }
 }

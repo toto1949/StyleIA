@@ -1,9 +1,11 @@
 import { StringDecoder } from "node:string_decoder";
 
 export class HttpError extends Error {
-  constructor(statusCode, message) {
+  constructor(statusCode, message, { code, headers } = {}) {
     super(message);
     this.statusCode = statusCode;
+    this.code = code;
+    this.headers = headers;
   }
 }
 
@@ -13,6 +15,10 @@ export function sendJSON(response, statusCode, payload, headers = {}) {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
     "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     ...corsHeaders(),
     ...headers
   });
@@ -22,14 +28,21 @@ export function sendJSON(response, statusCode, payload, headers = {}) {
 export function sendError(response, error) {
   const statusCode = error instanceof HttpError ? error.statusCode : 500;
   const message = statusCode >= 500 ? "Something went wrong." : error.message;
-  sendJSON(response, statusCode, { message });
+  sendJSON(response, statusCode, {
+    error: {
+      code: error instanceof HttpError && error.code ? error.code : `HTTP_${statusCode}`,
+      message
+    },
+    // Kept during the 1.0 transition for the existing iOS decoder.
+    message
+  }, error instanceof HttpError ? error.headers : undefined);
 }
 
 export function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization,Content-Type"
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,Idempotency-Key,X-SceneMe-App-Store-Transaction-ID"
   };
 }
 

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { config } from "./config.mjs";
 import { base64URLDecode, base64URLEncode, parseBase64URLJSON } from "./encoding.mjs";
 import { bearerToken, HttpError } from "./http-utils.mjs";
+import { store } from "./services/store-instance.mjs";
 
 const appleKeyCache = {
   fetchedAt: 0,
@@ -17,11 +18,14 @@ function hmac(input) {
   return crypto.createHmac("sha256", config.jwtSecret).update(input).digest();
 }
 
-export function signToken(payload, expiresInSeconds = 60 * 60 * 24 * 30) {
+export function signToken(payload, expiresInSeconds = config.accessTokenTTLSeconds) {
   const header = { alg: "HS256", typ: "JWT" };
   const now = Math.floor(Date.now() / 1000);
   const body = {
     ...payload,
+    iss: config.jwtIssuer,
+    aud: config.jwtAudience,
+    jti: crypto.randomUUID(),
     iat: now,
     exp: now + expiresInSeconds
   };
@@ -39,6 +43,10 @@ export function verifyToken(token, expectedType) {
   }
 
   const [encodedHeader, encodedBody, encodedSignature] = parts;
+  const header = parseBase64URLJSON(encodedHeader);
+  if (header.alg !== "HS256" || header.typ !== "JWT") {
+    throw new HttpError(401, "Unauthorized.");
+  }
   const expectedSignature = hmac(`${encodedHeader}.${encodedBody}`);
   const incomingSignature = base64URLDecode(encodedSignature);
 
@@ -50,7 +58,15 @@ export function verifyToken(token, expectedType) {
   }
 
   const payload = parseBase64URLJSON(encodedBody);
-  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+  if (
+    payload.iss !== config.jwtIssuer
+    || payload.aud !== config.jwtAudience
+    || !payload.jti
+    || !Number.isFinite(payload.iat)
+    || !Number.isFinite(payload.exp)
+    || payload.exp < Math.floor(Date.now() / 1000)
+    || payload.iat > Math.floor(Date.now() / 1000) + 60
+  ) {
     throw new HttpError(401, "Unauthorized.");
   }
 
@@ -61,9 +77,14 @@ export function verifyToken(token, expectedType) {
   return payload;
 }
 
-export function authenticateRequest(request) {
+export async function authenticateRequest(request) {
   const payload = verifyToken(bearerToken(request), "access");
   if (!payload.sub) {
+    throw new HttpError(401, "Unauthorized.");
+  }
+  const data = await store.snapshot();
+  const user = data.users.find((candidate) => candidate.id === payload.sub);
+  if (!user || Number(payload.ver || 0) !== Number(user.tokenVersion || 0)) {
     throw new HttpError(401, "Unauthorized.");
   }
   return payload;
@@ -119,6 +140,10 @@ export async function verifyAppleIdentityToken(identityToken) {
   const header = parseBase64URLJSON(encodedHeader);
   const payload = parseBase64URLJSON(encodedPayload);
 
+  if (header.alg !== "RS256" || !header.kid || !payload.sub) {
+    throw new HttpError(401, "Invalid Apple identity token.");
+  }
+
   if (payload.iss !== "https://appleid.apple.com") {
     throw new HttpError(401, "Invalid Apple identity token.");
   }
@@ -172,7 +197,9 @@ async function appleKeys() {
     return appleKeyCache.keys;
   }
 
-  const response = await fetch("https://appleid.apple.com/auth/keys");
+  const response = await fetch("https://appleid.apple.com/auth/keys", {
+    signal: AbortSignal.timeout(10_000)
+  });
   if (!response.ok) {
     throw new Error("Unable to fetch Apple signing keys.");
   }
@@ -192,6 +219,10 @@ export async function verifyGoogleIdentityToken(identityToken) {
   const [encodedHeader, encodedPayload, encodedSignature] = parts;
   const header = parseBase64URLJSON(encodedHeader);
   const payload = parseBase64URLJSON(encodedPayload);
+
+  if (header.alg !== "RS256" || !header.kid || !payload.sub) {
+    throw new HttpError(401, "Invalid Google identity token.");
+  }
 
   const issuer = String(payload.iss || "");
   if (issuer !== "accounts.google.com" && issuer !== "https://accounts.google.com") {
@@ -250,7 +281,9 @@ async function googleKeys() {
     return googleKeyCache.keys;
   }
 
-  const response = await fetch("https://www.googleapis.com/oauth2/v3/certs");
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/certs", {
+    signal: AbortSignal.timeout(10_000)
+  });
   if (!response.ok) {
     throw new Error("Unable to fetch Google signing keys.");
   }

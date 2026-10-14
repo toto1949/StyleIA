@@ -3,9 +3,11 @@ import { authenticateRequest } from "../auth.mjs";
 import { config } from "../config.mjs";
 import { HttpError, readJSON, sendJSON } from "../http-utils.mjs";
 import {
+  cancelFalRequest,
   FalBillingError,
   generateScene,
   generateSceneVideo,
+  isFalRequestPendingError,
   isFalCdnURLFresh,
   serializeFalError
 } from "../services/fal-service.mjs";
@@ -24,23 +26,71 @@ import {
   videoCacheKey
 } from "../services/prompt-builder.mjs";
 import { store } from "../services/store-instance.mjs";
+import {
+  appStoreTierForRequest,
+  assertCostBudgetInStore,
+  consumeCreditsInStore,
+  generationCreditCosts,
+  refundCreditsInStore,
+  requireTier
+} from "../services/app-store-service.mjs";
 import { broadcastJobUpdate } from "../websocket.mjs";
 import { findScene } from "./scenes.mjs";
+import { assertSafeUserText } from "../services/content-safety-service.mjs";
+import { objectStorage } from "../services/object-storage-service.mjs";
+import { ensureUploadReady, ensureUploadSafeForGeneration, uploadInputURL } from "./upload.mjs";
 
 const cancelledJobs = new Set();
 const JOB_TYPES = new Set(["scene", "scene-video"]);
 
-export async function createSceneJob(request, response) {
-  const auth = authenticateRequest(request);
-  const body = await readJSON(request);
-  const job = await insertSceneJob(auth.sub, body, { reroll: false });
+export async function cancelJobsForAccountDeletion(jobs) {
+  const failures = [];
+  for (const job of jobs.filter((candidate) =>
+    JOB_TYPES.has(candidate.type) && ["pending", "processing"].includes(candidate.status)
+  )) {
+    cancelledJobs.add(job.jobId);
+    if (!job.providerRequestId || !job.providerModel || config.enableMockGeneration) {
+      continue;
+    }
+    try {
+      await cancelFalRequest(job.providerModel, job.providerRequestId);
+    } catch (error) {
+      failures.push({ jobId: job.jobId, error: error?.message || String(error) });
+    }
+  }
+  return failures;
+}
 
-  startGeneration(job.jobId);
-  sendJSON(response, 200, sceneJobResponse(job));
+export async function createSceneJob(request, response) {
+  const auth = await authenticateRequest(request);
+  const idempotencyKey = requireIdempotencyKey(request);
+  const body = await readJSON(request);
+  const tier = await appStoreTierForRequest(request, auth.sub);
+  if (body.customScene || String(body.sceneId || "").startsWith("custom")) {
+    requireTier(tier, "creator", "Custom scenes");
+    await assertSafeUserText([
+      body.customScene?.name,
+      body.customScene?.basePrompt,
+      body.customScene?.outfit
+    ], auth.sub);
+  }
+  if (body.companionS3Key) {
+    requireTier(tier, "pro", "Companion photos");
+  }
+  const job = await insertSceneJob(auth.sub, body, { reroll: false, tier, idempotencyKey });
+
+  if (!job.idempotentReplay) {
+    startGeneration(job.jobId);
+  }
+  sendJSON(response, 200, await sceneJobResponse(job));
 }
 
 export async function rerollSceneJob(request, response, sourceJobId) {
-  const auth = authenticateRequest(request);
+  const auth = await authenticateRequest(request);
+  const idempotencyKey = requireIdempotencyKey(request);
+  const tier = await appStoreTierForRequest(request, auth.sub);
+  requireTier(tier, "creator", "Outfit re-roll");
+  const body = await readJSON(request).catch(() => ({}));
   const data = await store.snapshot();
   const source = data.jobs.find(
     (candidate) => candidate.jobId === sourceJobId && candidate.userId === auth.sub && candidate.type === "scene"
@@ -58,23 +108,34 @@ export async function rerollSceneJob(request, response, sourceJobId) {
     subjectGender: source.subjectGender,
     companionKind: source.companionKind,
     companionGender: source.companionGender,
+    companionConsentConfirmed: body.companionConsentConfirmed === true,
     timeOfDay: source.timeOfDay,
     weather: source.weather,
-    pose: source.pose
-  }, { reroll: true });
+    pose: source.pose,
+    imageQuality: source.imageQuality || "standard"
+  }, { reroll: true, tier, idempotencyKey });
 
-  startGeneration(job.jobId);
-  sendJSON(response, 200, sceneJobResponse(job));
+  if (!job.idempotentReplay) {
+    startGeneration(job.jobId);
+  }
+  sendJSON(response, 200, await sceneJobResponse(job));
 }
 
 /// Animates a completed scene image into a short video clip.
 /// Body (optional): { motionStyle, spokenLine, directionNote }
 /// Cache reuses only when the same director settings were used before.
 export async function createVideoJob(request, response, sourceJobId) {
-  const auth = authenticateRequest(request);
+  const auth = await authenticateRequest(request);
+  const idempotencyKey = requireIdempotencyKey(request);
+  const tier = await appStoreTierForRequest(request, auth.sub);
+  requireTier(tier, "pro", "Video Director");
   const body = await readJSON(request).catch(() => ({}));
+  await assertSafeUserText([body.spokenLine, body.directionNote], auth.sub);
   const motionStyle = normalizeMotionStyle(body.motionStyle);
   const spokenLine = sanitizeSpokenLine(body.spokenLine);
+  if (motionStyle === "talking" && !spokenLine) {
+    throw new HttpError(400, "Talking videos require a spoken line.");
+  }
   const directionNote = sanitizeDirectionNote(body.directionNote);
   const cacheKey = videoCacheKey(motionStyle, spokenLine, directionNote);
 
@@ -101,13 +162,14 @@ export async function createVideoJob(request, response, sourceJobId) {
       status: "completed",
       progress: 100,
       videoURL: cachedClip.videoURL,
+      videoObjectKey: cachedClip.videoObjectKey || null,
       motionStyle: cachedClip.motionStyle || "cinematic",
       spokenLine: cachedClip.spokenLine || "",
       directionNote: cachedClip.directionNote || "",
       videoCacheKey: cachedClip.cacheKey || cacheKey,
       videoClips: normalizeVideoClips(source)
     };
-    sendJSON(response, 200, sceneJobResponse(cached));
+    sendJSON(response, 200, await sceneJobResponse(cached));
     return;
   }
 
@@ -126,11 +188,45 @@ export async function createVideoJob(request, response, sourceJobId) {
   });
 
   const job = await store.mutate(async (current) => {
+    const existing = current.jobs.find((candidate) =>
+      candidate.userId === auth.sub
+      && candidate.type === "scene-video"
+      && candidate.idempotencyKey === idempotencyKey
+    );
+    if (existing) {
+      return { ...existing, idempotentReplay: true };
+    }
+    const activeCount = current.jobs.filter((candidate) =>
+      candidate.userId === auth.sub
+      && candidate.type === "scene-video"
+      && ["pending", "processing"].includes(candidate.status)
+    ).length;
+    if (activeCount >= config.maxConcurrentVideoJobsPerUser) {
+      throw new HttpError(429, "A video is already processing for this account.");
+    }
+    const creditCost = motionStyle === "talking"
+      ? generationCreditCosts.talkingVideo
+      : generationCreditCosts.silentVideo;
+    const estimatedCostUSD = motionStyle === "talking"
+      ? config.estimatedTalkingVideoCostUSD
+      : config.estimatedVideoCostUSD;
+    assertCostBudgetInStore(current, auth.sub, estimatedCostUSD);
+    const publicJobId = crypto.randomUUID();
+    consumeCreditsInStore(current, auth.sub, {
+      cost: creditCost,
+      jobId: publicJobId,
+      operation: motionStyle === "talking" ? "talking_video" : "silent_video"
+    });
     const created = {
       id: crypto.randomUUID(),
-      jobId: crypto.randomUUID(),
+      jobId: publicJobId,
       type: "scene-video",
       userId: auth.sub,
+      idempotencyKey,
+      estimatedCostUSD,
+      creditCost,
+      creditOperation: motionStyle === "talking" ? "talking_video" : "silent_video",
+      creditRefunded: false,
       sourceJobId,
       sceneId: source.sceneId,
       sceneName: source.sceneName,
@@ -155,7 +251,7 @@ export async function createVideoJob(request, response, sourceJobId) {
       updatedAt: new Date().toISOString()
     };
     current.jobs.push(created);
-    return created;
+    return { ...created, idempotentReplay: false };
   });
 
   logScene("video_job_created", {
@@ -166,12 +262,14 @@ export async function createVideoJob(request, response, sourceJobId) {
     hasSpokenLine: Boolean(spokenLine),
     hasDirectionNote: Boolean(directionNote)
   });
-  startVideoGeneration(job.jobId);
-  sendJSON(response, 200, sceneJobResponse(job));
+  if (!job.idempotentReplay) {
+    startVideoGeneration(job.jobId);
+  }
+  sendJSON(response, 200, await sceneJobResponse(job));
 }
 
 export async function getSceneJob(request, response, jobId) {
-  const auth = authenticateRequest(request);
+  const auth = await authenticateRequest(request);
   const data = await store.snapshot();
   const job = data.jobs.find(
     (candidate) => candidate.jobId === jobId && candidate.userId === auth.sub && JOB_TYPES.has(candidate.type)
@@ -181,12 +279,49 @@ export async function getSceneJob(request, response, jobId) {
     throw new HttpError(404, "Job not found.");
   }
 
-  sendJSON(response, 200, sceneJobResponse(job));
+  sendJSON(response, 200, await sceneJobResponse(job));
 }
 
 export async function cancelSceneJob(request, response, jobId) {
-  const auth = authenticateRequest(request);
+  const auth = await authenticateRequest(request);
+  const beforeDeletion = await store.snapshot();
+  const ownedJob = beforeDeletion.jobs.find(
+    (candidate) => candidate.jobId === jobId && candidate.userId === auth.sub && JOB_TYPES.has(candidate.type)
+  );
+  if (!ownedJob) {
+    throw new HttpError(404, "Job not found.");
+  }
   cancelledJobs.add(jobId);
+  if (
+    ["pending", "processing"].includes(ownedJob.status)
+    && ownedJob.providerRequestId
+    && ownedJob.providerModel
+    && !config.enableMockGeneration
+  ) {
+    try {
+      await cancelFalRequest(ownedJob.providerModel, ownedJob.providerRequestId);
+      logScene("provider_job_cancel_requested", {
+        jobId,
+        phase: ownedJob.providerPhase || null,
+        providerRequestId: ownedJob.providerRequestId
+      });
+    } catch (error) {
+      cancelledJobs.delete(jobId);
+      logScene("provider_job_cancel_failed", { jobId, ...serializeFalError(error) });
+      throw new HttpError(502, "The provider could not confirm cancellation. Please retry.", {
+        code: "PROVIDER_CANCEL_FAILED"
+      });
+    }
+  }
+  if (objectStorage.enabled) {
+    await objectStorage.deleteKeys([
+      ownedJob.imageObjectKey,
+      ownedJob.videoObjectKey,
+      ...(Array.isArray(ownedJob.videoClips)
+        ? ownedJob.videoClips.map((clip) => clip.videoObjectKey)
+        : [])
+    ]);
+  }
 
   await store.mutate(async (data) => {
     const index = data.jobs.findIndex(
@@ -195,6 +330,16 @@ export async function cancelSceneJob(request, response, jobId) {
     if (index === -1) {
       throw new HttpError(404, "Job not found.");
     }
+    const job = data.jobs[index];
+    if (job.status !== "completed" && !job.creditRefunded) {
+      refundCreditsInStore(data, auth.sub, {
+        cost: job.creditCost,
+        jobId: job.jobId,
+        operation: job.creditOperation,
+        reason: "user_cancelled"
+      });
+      job.creditRefunded = true;
+    }
     data.jobs.splice(index, 1);
   });
 
@@ -202,7 +347,7 @@ export async function cancelSceneJob(request, response, jobId) {
 }
 
 export async function sceneHistory(request, response, url) {
-  const auth = authenticateRequest(request);
+  const auth = await authenticateRequest(request);
   const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10));
   const limit = Math.min(50, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "20", 10)));
   const data = await store.snapshot();
@@ -210,14 +355,40 @@ export async function sceneHistory(request, response, url) {
     .filter((job) => job.userId === auth.sub && job.type === "scene" && job.status === "completed")
     .sort((lhs, rhs) => new Date(rhs.createdAt).getTime() - new Date(lhs.createdAt).getTime());
   const start = (page - 1) * limit;
-  const items = completed.slice(start, start + limit).map(sceneJobResponse);
+  const items = await Promise.all(completed.slice(start, start + limit).map(sceneJobResponse));
 
   sendJSON(response, 200, { items, total: completed.length });
 }
 
-async function insertSceneJob(userId, body, { reroll }) {
-  const s3Key = String(body.s3Key || "");
-  const companionS3Key = body.companionS3Key ? String(body.companionS3Key) : null;
+async function insertSceneJob(userId, body, { reroll, tier, idempotencyKey }) {
+  const requestedS3Key = String(body.s3Key || "");
+  const requestedCompanionS3Key = body.companionS3Key ? String(body.companionS3Key) : null;
+  const requestedCompanionKind = normalizeCompanionKind(body.companionKind);
+  if (
+    requestedCompanionS3Key
+    && requestedCompanionKind === "friend"
+    && body.companionConsentConfirmed !== true
+  ) {
+    throw new HttpError(400, "Confirm that you have permission to use the companion photo.", {
+      code: "COMPANION_CONSENT_REQUIRED"
+    });
+  }
+  const preparedUpload = await ensureUploadReady(userId, requestedS3Key);
+  const preparedCompanion = requestedCompanionS3Key
+    ? await ensureUploadReady(userId, requestedCompanionS3Key)
+    : null;
+  const s3Key = preparedUpload.s3Key;
+  const companionS3Key = preparedCompanion?.s3Key || null;
+  const subjectInputURL = await uploadInputURL(preparedUpload);
+  const companionInputURL = preparedCompanion
+    ? await uploadInputURL(preparedCompanion)
+    : null;
+  await Promise.all([
+    ensureUploadSafeForGeneration(userId, preparedUpload, subjectInputURL),
+    preparedCompanion
+      ? ensureUploadSafeForGeneration(userId, preparedCompanion, companionInputURL)
+      : Promise.resolve()
+  ]);
   const customScene = resolveCustomScene(body);
   const scene = customScene || await findScene(String(body.sceneId || ""));
 
@@ -226,7 +397,7 @@ async function insertSceneJob(userId, body, { reroll }) {
   const weather = normalizeWeather(body.weather, scene);
   const pose = normalizePose(body.pose);
   const hasCompanion = Boolean(companionS3Key);
-  const companionKind = normalizeCompanionKind(body.companionKind);
+  const companionKind = requestedCompanionKind;
   // Friend gender is required for correct same-sex pairing; pets ignore this.
   const companionGender = companionKind === "pet"
     ? "auto"
@@ -252,6 +423,31 @@ async function insertSceneJob(userId, body, { reroll }) {
     : Math.floor(Math.random() * 1_000_000_000);
 
   const job = await store.mutate(async (data) => {
+    const existing = data.jobs.find((candidate) =>
+      candidate.userId === userId
+      && candidate.type === "scene"
+      && candidate.idempotencyKey === idempotencyKey
+    );
+    if (existing) {
+      return { ...existing, idempotentReplay: true };
+    }
+    const activeCount = data.jobs.filter((candidate) =>
+      candidate.userId === userId
+      && candidate.type === "scene"
+      && ["pending", "processing"].includes(candidate.status)
+    ).length;
+    if (activeCount >= config.maxConcurrentImageJobsPerUser) {
+      throw new HttpError(429, "A scene is already processing for this account.");
+    }
+    const premiumImage = body.imageQuality === "premium";
+    if (premiumImage) requireTier(tier, "pro", "Premium image quality");
+    const creditCost = premiumImage
+      ? generationCreditCosts.premiumImage
+      : generationCreditCosts.standardImage;
+    const estimatedCostUSD = premiumImage
+      ? config.estimatedPremiumImageCostUSD
+      : config.estimatedImageCostUSD;
+    assertCostBudgetInStore(data, userId, estimatedCostUSD);
     const upload = data.uploads.find(
       (candidate) => candidate.userId === userId && candidate.s3Key === s3Key && candidate.status === "uploaded"
     );
@@ -270,11 +466,24 @@ async function insertSceneJob(userId, body, { reroll }) {
       }
     }
 
+    const publicJobId = crypto.randomUUID();
+    consumeCreditsInStore(data, userId, {
+      cost: creditCost,
+      jobId: publicJobId,
+      operation: premiumImage ? "premium_image" : (reroll ? "reroll" : (hasCompanion ? "companion_image" : "standard_image"))
+    });
+
     const created = {
       id: crypto.randomUUID(),
-      jobId: crypto.randomUUID(),
+      jobId: publicJobId,
       type: "scene",
       userId,
+      idempotencyKey,
+      estimatedCostUSD,
+      creditCost,
+      creditOperation: premiumImage ? "premium_image" : (reroll ? "reroll" : (hasCompanion ? "companion_image" : "standard_image")),
+      creditRefunded: false,
+      imageQuality: premiumImage ? "premium" : "standard",
       s3Key,
       companionS3Key,
       sceneId: scene.id,
@@ -287,6 +496,7 @@ async function insertSceneJob(userId, body, { reroll }) {
       subjectGender,
       companionKind,
       companionGender,
+      companionConsentConfirmed: hasCompanion && companionKind === "friend",
       timeOfDay,
       weather,
       pose,
@@ -297,7 +507,8 @@ async function insertSceneJob(userId, body, { reroll }) {
       imageURL: "",
       videoURL: "",
       error: "",
-      originalPhotoURL: upload.publicURL,
+      originalPhotoURL: subjectInputURL || upload.publicURL,
+      companionPhotoURL: companionInputURL,
       localPath: upload.localPath,
       contentType: upload.contentType || "image/jpeg",
       companionLocalPath: companionUpload?.localPath || null,
@@ -307,7 +518,7 @@ async function insertSceneJob(userId, body, { reroll }) {
       updatedAt: new Date().toISOString()
     };
     data.jobs.push(created);
-    return created;
+    return { ...created, idempotentReplay: false };
   });
 
   logScene("scene_job_created", {
@@ -324,6 +535,66 @@ async function insertSceneJob(userId, body, { reroll }) {
   });
 
   return job;
+}
+
+export async function recoverInterruptedJobs() {
+  const data = await store.snapshot();
+  const pending = data.jobs.filter((job) => job.status === "pending" && JOB_TYPES.has(job.type));
+  const processing = data.jobs.filter((job) => job.status === "processing" && JOB_TYPES.has(job.type));
+  const resumable = processing.filter((job) => job.providerRequestId && job.providerModel);
+  const interrupted = processing.filter((job) => !job.providerRequestId || !job.providerModel);
+
+  if (interrupted.length > 0) {
+    await store.mutate(async (current) => {
+      for (const interruptedJob of interrupted) {
+        const job = current.jobs.find((candidate) => candidate.jobId === interruptedJob.jobId);
+        if (!job || job.status !== "processing") {
+          continue;
+        }
+        if (!job.creditRefunded) {
+          refundCreditsInStore(current, job.userId, {
+            cost: job.creditCost,
+            jobId: job.jobId,
+            operation: job.creditOperation,
+            reason: "service_restart"
+          });
+          job.creditRefunded = true;
+        }
+        job.status = "failed";
+        job.progress = 100;
+        job.error = "Generation was interrupted by a service restart. Please retry; no credit was used.";
+        job.updatedAt = new Date().toISOString();
+      }
+    });
+  }
+
+  for (const job of pending) {
+    if (job.type === "scene-video") {
+      startVideoGeneration(job.jobId);
+    } else {
+      startGeneration(job.jobId);
+    }
+  }
+  for (const job of resumable) {
+    if (job.type === "scene-video") {
+      startVideoGeneration(job.jobId);
+    } else {
+      startGeneration(job.jobId);
+    }
+  }
+  return {
+    resumed: pending.length + resumable.length,
+    resumedProviderRequests: resumable.length,
+    failedSafely: interrupted.length
+  };
+}
+
+function requireIdempotencyKey(request) {
+  const value = String(request.headers["idempotency-key"] || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) {
+    throw new HttpError(400, "A valid Idempotency-Key header is required.");
+  }
+  return value;
 }
 
 function resolveCustomScene(body) {
@@ -381,23 +652,30 @@ async function runSceneGeneration(jobId) {
     // Cost saver: identical photo + prompt already generated for this user
     // means we can reuse the result without paying fal again. Rerolls always
     // regenerate since the point is a different output.
-    const reused = !job.isReroll && config.reuseIdenticalResults
+    const resumeProvider = providerResumeState(job);
+    const reused = !resumeProvider && !job.isReroll && config.reuseIdenticalResults
       ? await findReusableResult(job)
       : null;
 
     let imageURL;
+    let imageObjectKey = null;
     if (reused) {
       logScene("scene_job_reused_result", { jobId, reusedFromJobId: reused.jobId });
-      imageURL = reused.imageURL;
+      imageObjectKey = reused.imageObjectKey || null;
+      imageURL = imageObjectKey
+        ? await objectStorage.createDownloadURL(imageObjectKey)
+        : reused.imageURL;
     } else {
-      imageURL = await generateScene({
+      const providerImageURL = await generateScene({
         imagePath: job.localPath,
         contentType: job.contentType,
         companionPath: job.companionLocalPath,
         companionContentType: job.companionContentType,
         originalPhotoURL: job.originalPhotoURL,
+        companionPhotoURL: job.companionPhotoURL,
         prompt: job.prompt,
         seed: job.seed,
+        imageQuality: job.imageQuality || "standard",
         jobId,
         cachedFalImageURL: await freshFalCdnURL(job.userId, job.s3Key),
         cachedCompanionFalImageURL: job.companionS3Key
@@ -407,17 +685,47 @@ async function runSceneGeneration(jobId) {
         onCompanionFalImageUploaded: job.companionS3Key
           ? (url) => rememberFalCdnURL(job.userId, job.companionS3Key, url)
           : undefined,
+        onProviderState: (state) => persistProviderState(jobId, state),
+        resumeProvider,
         onProgress: (percent) => updateProgress(jobId, percent)
       });
+      if (cancelledJobs.has(jobId)) {
+        cancelledJobs.delete(jobId);
+        logScene("scene_job_cancelled_before_result_ingestion", { jobId });
+        return;
+      }
+      if (objectStorage.enabled) {
+        const stored = await objectStorage.ingestProviderResult({
+          userId: job.userId,
+          jobId,
+          kind: "image",
+          sourceURL: providerImageURL
+        });
+        imageObjectKey = stored.key;
+        imageURL = await objectStorage.createDownloadURL(stored.key);
+      } else {
+        imageURL = providerImageURL;
+      }
     }
 
     if (cancelledJobs.has(jobId)) {
       cancelledJobs.delete(jobId);
+      if (imageObjectKey) {
+        await objectStorage.deleteKeys([imageObjectKey]);
+      }
       logScene("scene_job_cancelled_after_generation", { jobId });
       return;
     }
 
-    await transitionJob(jobId, { status: "completed", progress: 100, imageURL, error: "" });
+    await transitionJob(jobId, {
+      status: "completed",
+      progress: 100,
+      imageURL,
+      imageObjectKey,
+      actualCostUSD: reused ? 0 : job.estimatedCostUSD,
+      estimatedCostUSD: reused ? 0 : job.estimatedCostUSD,
+      error: ""
+    });
     logScene("scene_job_completed", { jobId, durationMs: Date.now() - startedAt, reused: Boolean(reused) });
     broadcastJobUpdate(jobId, { type: "completed", resultURLs: [imageURL], looks: [] });
   } catch (error) {
@@ -427,12 +735,44 @@ async function runSceneGeneration(jobId) {
       return;
     }
 
+    if (isFalRequestPendingError(error)) {
+      logScene("scene_job_provider_still_running", {
+        jobId,
+        providerRequestId: error.requestId,
+        providerModel: error.model,
+        providerPhase: error.phase
+      });
+      scheduleGenerationRetry(jobId, "scene");
+      return;
+    }
+
     logScene("scene_job_failed", { jobId, durationMs: Date.now() - startedAt, ...serializeFalError(error) });
     const publicError = error instanceof FalBillingError
       ? error.message
       : error?.message || "Scene generation failed. Your credits have not been used.";
 
-    await transitionJob(jobId, { status: "failed", progress: 100, imageURL: "", error: publicError });
+    await store.mutate(async (data) => {
+      const failed = data.jobs.find((candidate) => candidate.jobId === jobId);
+      if (!failed) {
+        return;
+      }
+      if (!failed.creditRefunded) {
+        refundCreditsInStore(data, failed.userId, {
+          cost: failed.creditCost,
+          jobId: failed.jobId,
+          operation: failed.creditOperation,
+          reason: "generation_failed"
+        });
+        failed.creditRefunded = true;
+      }
+      Object.assign(failed, {
+        status: "failed",
+        progress: 100,
+        imageURL: "",
+        error: publicError,
+        updatedAt: new Date().toISOString()
+      });
+    });
     broadcastJobUpdate(jobId, { type: "failed", error: publicError });
   }
 }
@@ -448,23 +788,54 @@ async function runVideoGeneration(jobId) {
   broadcastJobUpdate(jobId, { type: "progress", percent: 5 });
 
   try {
-    const videoURL = await generateSceneVideo({
+    const providerVideoURL = await generateSceneVideo({
       imageURL: job.sourceImageURL,
       prompt: job.prompt,
       jobId,
       spokenLine: job.spokenLine || "",
       subjectGender: job.subjectGender || "auto",
       motionStyle: job.motionStyle || "cinematic",
+      onProviderState: (state) => persistProviderState(jobId, state),
+      resumeProvider: providerResumeState(job),
       onProgress: (percent) => updateProgress(jobId, percent)
     });
+    if (cancelledJobs.has(jobId)) {
+      cancelledJobs.delete(jobId);
+      logScene("video_job_cancelled_before_result_ingestion", { jobId });
+      return;
+    }
+    let videoURL = providerVideoURL;
+    let videoObjectKey = null;
+    if (objectStorage.enabled) {
+      const stored = await objectStorage.ingestProviderResult({
+        userId: job.userId,
+        jobId,
+        kind: "video",
+        sourceURL: providerVideoURL
+      });
+      videoObjectKey = stored.key;
+      videoURL = await objectStorage.createDownloadURL(stored.key);
+    }
 
     if (cancelledJobs.has(jobId)) {
       cancelledJobs.delete(jobId);
+      if (videoObjectKey) {
+        await objectStorage.deleteKeys([videoObjectKey]);
+      }
       logScene("video_job_cancelled_after_generation", { jobId });
       return;
     }
 
-    await transitionJob(jobId, { status: "completed", progress: 100, videoURL, error: "" });
+    await transitionJob(jobId, {
+      status: "completed",
+      progress: 100,
+      videoURL,
+      videoObjectKey,
+      actualCostUSD: job.estimatedCostUSD,
+      providerIntermediateVideoURL: null,
+      providerIntermediateAudioURL: null,
+      error: ""
+    });
 
     // Upsert into the source scene's clip library so Talking + Cinematic + …
     // can all be replayed later without losing prior directions.
@@ -477,6 +848,7 @@ async function runVideoGeneration(jobId) {
           spokenLine: job.spokenLine || "",
           directionNote: job.directionNote || "",
           videoURL,
+          videoObjectKey,
           createdAt: new Date().toISOString()
         };
         source.videoClips = upsertVideoClip(normalizeVideoClips(source), clip);
@@ -497,12 +869,42 @@ async function runVideoGeneration(jobId) {
       return;
     }
 
+    if (isFalRequestPendingError(error)) {
+      logScene("video_job_provider_still_running", {
+        jobId,
+        providerRequestId: error.requestId,
+        providerModel: error.model,
+        providerPhase: error.phase
+      });
+      scheduleGenerationRetry(jobId, "video");
+      return;
+    }
+
     logScene("video_job_failed", { jobId, durationMs: Date.now() - startedAt, ...serializeFalError(error) });
     const publicError = error instanceof FalBillingError
       ? error.message
       : error?.message || "Video generation failed. Your credits have not been used.";
 
-    await transitionJob(jobId, { status: "failed", progress: 100, videoURL: "", error: publicError });
+    await store.mutate(async (data) => {
+      const failed = data.jobs.find((candidate) => candidate.jobId === jobId);
+      if (!failed) return;
+      if (!failed.creditRefunded) {
+        refundCreditsInStore(data, failed.userId, {
+          cost: failed.creditCost,
+          jobId: failed.jobId,
+          operation: failed.creditOperation,
+          reason: "generation_failed"
+        });
+        failed.creditRefunded = true;
+      }
+      Object.assign(failed, {
+        status: "failed",
+        progress: 100,
+        videoURL: "",
+        error: publicError,
+        updatedAt: new Date().toISOString()
+      });
+    });
     broadcastJobUpdate(jobId, { type: "failed", error: publicError });
   }
 }
@@ -565,6 +967,44 @@ async function updateProgress(jobId, percent) {
   broadcastJobUpdate(jobId, { type: "progress", percent: bounded });
 }
 
+function providerResumeState(job) {
+  if (!job?.providerRequestId || !job?.providerModel) {
+    return null;
+  }
+  return {
+    requestId: job.providerRequestId,
+    model: job.providerModel,
+    phase: job.providerPhase || (job.type === "scene-video" ? "video" : "scene"),
+    intermediateVideoURL: job.providerIntermediateVideoURL || null,
+    intermediateAudioURL: job.providerIntermediateAudioURL || null
+  };
+}
+
+async function persistProviderState(jobId, state) {
+  const patch = {};
+  if (state.requestId) patch.providerRequestId = state.requestId;
+  if (state.model) patch.providerModel = state.model;
+  if (state.phase) patch.providerPhase = state.phase;
+  if (Object.hasOwn(state, "intermediateVideoURL")) {
+    patch.providerIntermediateVideoURL = state.intermediateVideoURL;
+  }
+  if (Object.hasOwn(state, "intermediateAudioURL")) {
+    patch.providerIntermediateAudioURL = state.intermediateAudioURL;
+  }
+  await transitionJob(jobId, patch);
+}
+
+function scheduleGenerationRetry(jobId, kind) {
+  const timer = setTimeout(() => {
+    if (kind === "video") {
+      startVideoGeneration(jobId);
+    } else {
+      startGeneration(jobId);
+    }
+  }, 15_000);
+  timer.unref?.();
+}
+
 async function transitionJob(jobId, patch) {
   return store.mutate(async (data) => {
     const job = data.jobs.find((candidate) => candidate.jobId === jobId);
@@ -577,15 +1017,27 @@ async function transitionJob(jobId, patch) {
   });
 }
 
-function sceneJobResponse(job) {
+async function sceneJobResponse(job) {
+  const imageURL = objectStorage.enabled && job.imageObjectKey
+    ? await objectStorage.createDownloadURL(job.imageObjectKey)
+    : job.imageURL || null;
+  const videoURL = objectStorage.enabled && job.videoObjectKey
+    ? await objectStorage.createDownloadURL(job.videoObjectKey)
+    : job.videoURL || null;
+  const clips = await Promise.all(normalizeVideoClips(job).map(async (clip) => ({
+    ...clip,
+    videoURL: objectStorage.enabled && clip.videoObjectKey
+      ? await objectStorage.createDownloadURL(clip.videoObjectKey)
+      : clip.videoURL
+  })));
   return {
     jobId: job.jobId,
     kind: job.type === "scene-video" ? "video" : "image",
     status: job.status,
     progress: job.progress,
-    imageURL: job.imageURL || null,
-    videoURL: job.videoURL || null,
-    videoClips: normalizeVideoClips(job),
+    imageURL,
+    videoURL,
+    videoClips: clips,
     sourceJobId: job.sourceJobId || null,
     sceneId: job.sceneId,
     sceneName: job.sceneName || "",
@@ -602,7 +1054,6 @@ function sceneJobResponse(job) {
     spokenLine: job.spokenLine || job.videoSpokenLine || null,
     directionNote: job.directionNote || null,
     prompt: job.prompt,
-    originalPhotoURL: job.originalPhotoURL || null,
     createdAt: job.createdAt,
     error: job.error || null
   };
