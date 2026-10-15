@@ -35,12 +35,12 @@ Render's currently deployed August backend uses ephemeral JSON and local media p
 2. Export the current legacy JSON and media from the running Render instance **before any restart or redeploy**, if available; make a secure backup and checksum. Render free ephemeral storage may already have lost older data.
 3. Run the current backend's `npm run storage:migrate-legacy` dry run against recovered files. Only apply once all expected photos/media are recovered or unavoidable losses are explicitly approved.
 4. Initialize the new PostgreSQL database using migration scripts in ascending order. Supabase's management SQL migration runner can apply source SQL for `001`, `002` and `003`, after confirming all permissions and schema ownership.
-5. Run `npm run db:import-json -- --file=...` dry-run, then --apply against an **empty** database; validate user, job and upload counts. Keep original JSON and private media until account login and history are verified.
+5. Run `npm run db:import-json -- --file=...` dry-run, then --apply against an otherwise **empty** database. The dedicated precreated review account can be preserved with `--preserve-reviewer-email=appreview@sceneme.app` on the APPLY command. The importer aborts if any other destination data exists or if the import conflicts with the review account. Validate user, job and upload counts. Keep original JSON and private media until account login and history are verified.
 6. Only after the private media and database are ready, update Render environment variables, deploy the approved GitHub commit, and check `GET /health` says `database: "postgresql"`.
 
 ## Reviewer login and launch verification
 
-- Use `SCENEME_REVIEWER_EMAIL` and `SCENEME_REVIEWER_PASSWORD` temporarily on first PostgreSQL-backed production startup (password at least 16 characters).
+- The isolated SceneMe Supabase database now contains a precreated reviewer login at `appreview@sceneme.app`, with a PBKDF2 hash (not a plaintext password). No reviewer credentials are stored in Git. If the account needs to be recreated in another environment, `SCENEME_REVIEWER_EMAIL` and `SCENEME_REVIEWER_PASSWORD` can be temporarily set for first PostgreSQL-backed startup (password at least 16 characters).
 - Use a publisher-controlled email inbox. Provisioner is idempotent and refuses to reset an existing account.
 - Remove provisioning secrets after creation; restart and verify email/password sign-in persists.
 - In App Store Connect, enter credentials under **App Review Information**, not the public description.
