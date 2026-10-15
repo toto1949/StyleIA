@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { PostgresStore } from "../src/postgres-store.mjs";
+import { reviewerImportCarryover } from "./reviewer-import-guard.mjs";
 
 const databaseURL = process.env.DATABASE_URL;
 if (!databaseURL) {
@@ -9,6 +10,7 @@ if (!databaseURL) {
 }
 
 const apply = process.argv.includes("--apply");
+const preserveReviewerEmail = String(process.argv.find((argument) => argument.startsWith("--preserve-reviewer-email="))?.split("=").slice(1).join("=") || "").trim().toLowerCase();
 const fileArgument = process.argv.find((argument) => argument.startsWith("--file="));
 const filePath = path.resolve(fileArgument?.slice("--file=".length) || process.env.STYLEAI_DATA_PATH || "./data/styleai.json");
 const raw = await fs.readFile(filePath, "utf8");
@@ -26,7 +28,8 @@ console.log(JSON.stringify({
   mode: apply ? "apply" : "dry-run",
   source: filePath,
   sha256: checksum,
-  counts: Object.fromEntries(Object.entries(incoming).map(([key, value]) => [key, value.length]))
+  counts: Object.fromEntries(Object.entries(incoming).map(([key, value]) => [key, value.length])),
+  preserveReviewerEmail: preserveReviewerEmail || null
 }, null, 2));
 
 if (!apply) {
@@ -40,15 +43,17 @@ const store = new PostgresStore(databaseURL, {
 
 try {
   await store.init();
+  let preservedReviewer = false;
   await store.mutate(async (current) => {
-    if (current.users.length || current.uploads.length || current.jobs.length || current.usage.length) {
-      throw new Error("Refusing to import into a non-empty SceneMe database.");
-    }
+    const reviewer = reviewerImportCarryover(current, incoming, preserveReviewerEmail);
+    preservedReviewer = Boolean(reviewer);
     Object.assign(current, incoming);
+    if (reviewer) current.users.push(reviewer);
   });
   const imported = await store.snapshot();
   for (const key of Object.keys(incoming)) {
-    if (imported[key].length !== incoming[key].length) {
+    const expectedCount = incoming[key].length + (key === "users" && preservedReviewer ? 1 : 0);
+    if (imported[key].length !== expectedCount) {
       throw new Error(`Imported ${key} count did not match source.`);
     }
   }

@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import sharp from "sharp";
+import { objectEncryptionOptions } from "../src/services/s3-compat.mjs";
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const apply = process.argv.includes("--apply");
@@ -110,7 +111,7 @@ for (const item of plan) {
     ContentType: "image/jpeg",
     ContentLength: body.length,
     CacheControl: "private, no-store",
-    ServerSideEncryption: "AES256",
+    ...objectEncryptionOptions(process.env.OBJECT_STORAGE_ENDPOINT),
     Metadata: { sha256: crypto.createHash("sha256").update(body).digest("hex") }
   }));
 
@@ -143,7 +144,7 @@ for (const item of resultPlan) {
       ContentType: stored.contentType,
       ContentLength: stored.body.length,
       CacheControl: "private, no-store",
-      ServerSideEncryption: "AES256",
+      ...objectEncryptionOptions(process.env.OBJECT_STORAGE_ENDPOINT),
       Metadata: { sha256: crypto.createHash("sha256").update(stored.body).digest("hex") }
     }));
     if (item.clip) item.clip.videoObjectKey = key;
