@@ -44,9 +44,11 @@ import {
 } from "./services/app-store-service.mjs";
 import { assertSafeUserText } from "./services/content-safety-service.mjs";
 import { objectStorage } from "./services/object-storage-service.mjs";
+import { ensureReviewerAccount } from "./services/reviewer-account.mjs";
 
 await fs.mkdir(config.uploadDirectory, { recursive: true });
 await store.init();
+await ensureReviewerAccount();
 const recovery = await recoverInterruptedJobs();
 if (recovery.resumed || recovery.failedSafely) {
   console.log(JSON.stringify({
