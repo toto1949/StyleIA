@@ -21,8 +21,9 @@
     "test:upload-validation": "node scripts/verify-upload-validation.mjs",
     "test:fal-queue": "node scripts/verify-fal-queue.mjs",
     "test:smoke": "bash scripts/ci-smoke.sh",
-    "test": "npm run test:companions && npm run test:subscriptions && npm run test:credit-storage && npm run test:rate-limits && npm run test:provider-state && npm run test:content-safety && npm run test:upload-validation && npm run test:fal-queue && npm run test:smoke && npm run test:reviewer",
-    "test:reviewer": "node scripts/verify-reviewer-account.mjs"
+    "test": "npm run test:companions && npm run test:subscriptions && npm run test:credit-storage && npm run test:rate-limits && npm run test:provider-state && npm run test:content-safety && npm run test:upload-validation && npm run test:fal-queue && npm run test:smoke && npm run test:reviewer && npm run test:s3-compat",
+    "test:reviewer": "node scripts/verify-reviewer-account.mjs",
+    "test:s3-compat": "node scripts/verify-s3-compat.mjs"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",
