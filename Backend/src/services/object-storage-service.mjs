@@ -11,6 +11,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import sharp from "sharp";
 import { config } from "../config.mjs";
 import { HttpError } from "../http-utils.mjs";
+import { objectEncryptionOptions } from "./s3-compat.mjs";
 
 const enabled = Boolean(
   config.objectStorageBucket
@@ -123,7 +124,7 @@ async function validateAndSanitizeUpload(key) {
     ContentType: "image/jpeg",
     ContentLength: sanitized.length,
     CacheControl: "private, no-store",
-    ServerSideEncryption: "AES256",
+    ...objectEncryptionOptions(config.objectStorageEndpoint),
     Metadata: { sha256 }
   }));
   try {
@@ -213,7 +214,7 @@ async function ingestProviderResult({ userId, jobId, kind, sourceURL }) {
     ContentType: kind === "video" ? "video/mp4" : contentType,
     ContentLength: body.length,
     CacheControl: "private, no-store",
-    ServerSideEncryption: "AES256"
+    ...objectEncryptionOptions(config.objectStorageEndpoint)
   }));
   return { key, size: body.length, contentType };
 }
