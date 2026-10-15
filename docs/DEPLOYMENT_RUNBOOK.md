@@ -39,6 +39,16 @@ No step in this document authorizes spending, production mutation, build upload 
 9. Open traffic gradually. Monitor 5xx, p95 latency, DB saturation, failed/stuck jobs, provider costs, storage errors and Apple verification failures.
 10. Close the change only after the observation window and backup/object checks pass.
 
+## App Review login (only after durable storage is live)
+
+1. Confirm the production API is using PostgreSQL (`GET /health` should say `database: "postgresql"`) and that backup/restore testing has passed.
+2. In the existing Render **StyleIA** service, temporarily add the secret environment variables `SCENEME_REVIEWER_EMAIL` and `SCENEME_REVIEWER_PASSWORD`. Use an app-only address controlled by the publisher and a unique password of at least 16 characters. Never put either secret in GitHub, the public App Store description, or application logs.
+3. Trigger a manual deploy of the approved backend commit after all other production configuration is ready. The startup provisioner logs `reviewer_account_provisioning` with `created` or `existing`; an existing account with a different password fails safely rather than overwriting a user.
+4. Sign into the **App Store release build** with the reviewer email/password. Verify the catalog, upload consent, basic generation, history, profile, and account controls. Test StoreKit paid features through Apple sandbox transactions; reviewer provisioning grants no special paid subscription.
+5. Remove the two secret environment variables after successful account creation, then restart and sign in again to prove the test account persisted. Keep the actual account in PostgreSQL until review concludes.
+6. In App Store Connect's private **App Review Information** section, enter the credentials and testing instructions. Do not put them in the public product description.
+7. Maintain a separate Apple sandbox reviewer account with an expired subscription when Apple needs to exercise subscription purchase and renewal flows.
+
 ## iOS release candidate
 
 1. Increment build number; keep marketing version `1.0`.
