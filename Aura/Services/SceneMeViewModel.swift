@@ -155,7 +155,10 @@ final class SceneMeViewModel: ObservableObject {
             .store(in: &cancellables)
 
         if session != nil {
-            Task { await syncHistoryFromServer() }
+            Task {
+                await refreshAccountAccess()
+                await syncHistoryFromServer()
+            }
         }
     }
 
@@ -253,7 +256,10 @@ final class SceneMeViewModel: ObservableObject {
         userPhoto = persistence.loadPhoto()
         customScenes = persistence.loadCustomScenes()
         subscriptionService.bindAccount(userId: newSession.userId)
-        Task { await syncHistoryFromServer() }
+        Task {
+            await refreshAccountAccess()
+            await syncHistoryFromServer()
+        }
     }
 
     /// Called when the backend rejects our token (expired session).
@@ -302,6 +308,21 @@ final class SceneMeViewModel: ObservableObject {
         generationProgress = 0
         flow = .home
         tab = .home
+    }
+
+    /// Refresh the signed-in user's server-issued feature grant. Sign-in, app
+    /// foregrounding and stored-session restoration all invoke this method.
+    /// Only the account matching the current Keychain session can receive it.
+    func refreshAccountAccess() async {
+        guard let api, let signedIn = session else { return }
+        do {
+            let status = try await api.fetchAccountStatus(token: signedIn.accessToken)
+            guard session?.userId == signedIn.userId else { return }
+            subscriptionService.applyReviewAccess(status.subscription, for: signedIn.userId)
+        } catch {
+            // Network failure must never grant privileges. StoreKit entitlements
+            // remain available; any previous review grant also expires locally.
+        }
     }
 
     /// Pulls this user's completed jobs from the backend and merges into local gallery.
