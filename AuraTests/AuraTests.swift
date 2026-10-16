@@ -138,6 +138,58 @@ struct AuraTests {
         #expect(branded.size == input.size)
     }
 
+    @Test @MainActor func serverReviewGrantUnlocksOnlyTheMatchingAccount() throws {
+        let subscriptions = SubscriptionService.shared
+        let reviewerID = "851d1d7e-9e9c-4352-a23f-389a74c21c67"
+        let anotherID = "5d8c373e-4f21-4bc7-bf34-dac0512eaa60"
+        defer { subscriptions.bindAccount(userId: nil) }
+
+        let reviewJSON = """
+        {"subscription":{"tier":"pro","status":"active","environment":"complimentary_review",
+        "isReviewAccess":true,"expiresAt":"2035-12-15T23:59:59.000Z"}}
+        """
+        let review = try JSONDecoder().decode(
+            APIService.AccountStatus.self, from: Data(reviewJSON.utf8)
+        )
+        subscriptions.bindAccount(userId: reviewerID)
+        subscriptions.applyReviewAccess(review.subscription, for: reviewerID)
+        #expect(subscriptions.tier == .pro)
+        #expect(subscriptions.tier.canAnimateToVideo)
+        #expect(subscriptions.tier.canAddCompanion)
+        #expect(subscriptions.tier.canUseCustomScene)
+        #expect(subscriptions.tier.canRerollOutfit)
+
+        subscriptions.bindAccount(userId: anotherID)
+        #expect(subscriptions.complimentaryReviewTier == .free)
+        subscriptions.applyReviewAccess(review.subscription, for: reviewerID)
+        #expect(subscriptions.complimentaryReviewTier == .free)
+
+        let ordinaryJSON = """
+        {"subscription":{"tier":"pro","status":"active","environment":"Production",
+        "isReviewAccess":false,"expiresAt":"2035-12-15T23:59:59.000Z"}}
+        """
+        let ordinary = try JSONDecoder().decode(
+            APIService.AccountStatus.self, from: Data(ordinaryJSON.utf8)
+        )
+        subscriptions.applyReviewAccess(ordinary.subscription, for: anotherID)
+        #expect(subscriptions.complimentaryReviewTier == .free)
+
+        let expiredJSON = """
+        {"subscription":{"tier":"pro","status":"active","environment":"complimentary_review",
+        "isReviewAccess":true,"expiresAt":"2025-01-01T00:00:00.000Z"}}
+        """
+        let expired = try JSONDecoder().decode(
+            APIService.AccountStatus.self, from: Data(expiredJSON.utf8)
+        )
+        subscriptions.applyReviewAccess(expired.subscription, for: anotherID)
+        #expect(subscriptions.complimentaryReviewTier == .free)
+
+        subscriptions.applyReviewAccess(review.subscription, for: anotherID)
+        #expect(subscriptions.complimentaryReviewTier == .pro)
+        subscriptions.bindAccount(userId: nil)
+        #expect(subscriptions.complimentaryReviewTier == .free)
+    }
+
     private func solidImage(size: CGSize) -> UIImage {
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
