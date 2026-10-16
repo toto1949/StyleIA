@@ -78,6 +78,9 @@ jobs:
         run: |
           node --check scripts/provision-apple-root-certs.mjs
           node scripts/provision-apple-root-certs.mjs
+          node --check scripts/provision-supabase-ca.mjs
+          node --check src/postgres-store.mjs
+          node scripts/provision-supabase-ca.mjs
 
       - name: Backend test suite on PostgreSQL
         run: npm test
