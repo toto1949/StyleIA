@@ -52,23 +52,27 @@ async function download(entry) {
   return bytes;
 }
 
-await fs.mkdir(destination, { recursive: true });
-for (const entry of certificates) {
-  const target = path.join(destination, entry.file);
-  let bytes;
-  try {
-    bytes = await fs.readFile(target);
-    validate(bytes, entry);
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-    bytes = await download(entry);
-    const temp = `${target}.${process.pid}.tmp`;
+if (process.env.NODE_ENV !== "production") {
+  console.log("Skipping production-only Apple root CA provisioning.");
+} else {
+  await fs.mkdir(destination, { recursive: true });
+  for (const entry of certificates) {
+    const target = path.join(destination, entry.file);
+    let bytes;
     try {
-      await fs.writeFile(temp, bytes, { flag: "wx", mode: 0o644 });
-      await fs.rename(temp, target);
-    } finally {
-      await fs.rm(temp, { force: true }).catch(() => {});
+      bytes = await fs.readFile(target);
+      validate(bytes, entry);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      bytes = await download(entry);
+      const temp = `${target}.${process.pid}.tmp`;
+      try {
+        await fs.writeFile(temp, bytes, { flag: "wx", mode: 0o644 });
+        await fs.rename(temp, target);
+      } finally {
+        await fs.rm(temp, { force: true }).catch(() => {});
+      }
     }
+    console.log(`Verified Apple public root certificate: ${entry.file}`);
   }
-  console.log(`Verified Apple public root certificate: ${entry.file}`);
 }
