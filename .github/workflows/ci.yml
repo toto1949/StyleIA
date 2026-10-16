@@ -72,6 +72,13 @@ jobs:
           node --check scripts/verify-content-safety.mjs
           node --check scripts/verify-fal-queue.mjs
 
+      - name: Verify official Apple root certificates
+        env:
+          NODE_ENV: production
+        run: |
+          node --check scripts/provision-apple-root-certs.mjs
+          node scripts/provision-apple-root-certs.mjs
+
       - name: Backend test suite on PostgreSQL
         run: npm test
 

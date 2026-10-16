@@ -7,6 +7,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "prestart": "node scripts/provision-apple-root-certs.mjs",
     "start": "node src/server.mjs",
     "dev": "STYLEAI_ENABLE_MOCK_GENERATION=true node src/server.mjs",
     "db:migrate": "node scripts/migrate.mjs",
