@@ -121,6 +121,16 @@ jobs:
           sudo xcode-select -s "$SELECTED/Contents/Developer"
           xcodebuild -version
 
+      - name: Compile Release configuration
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project Aura.xcodeproj \
+            -scheme Aura \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO
+
       - name: Run AuraTests on simulator
         run: |
           set -euo pipefail
@@ -143,12 +153,3 @@ jobs:
             -only-testing:AuraTests \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Compile Release configuration
-        run: |
-          set -euo pipefail
-          xcodebuild build \
-            -project Aura.xcodeproj \
-            -scheme Aura \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=NO

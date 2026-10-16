@@ -10,6 +10,10 @@ final class SubscriptionService: ObservableObject {
 
     /// Tier backed by verified StoreKit entitlements.
     @Published private(set) var entitledTier: SubscriptionTier = .free
+    /// A short-lived, server-verified grant scoped to the currently signed-in
+    /// SceneMe account; never stored as a StoreKit transaction or persisted.
+    @Published private(set) var complimentaryReviewTier: SubscriptionTier = .free
+    private var complimentaryReviewExpiresAt: Date?
     @Published private(set) var products: [Product] = []
     @Published private(set) var isPurchasing = false
     @Published private(set) var isRestoring = false
@@ -32,6 +36,11 @@ final class SubscriptionService: ObservableObject {
             return debugTierOverride
         }
         #endif
+        if complimentaryReviewTier > entitledTier,
+           let expiry = complimentaryReviewExpiresAt,
+           expiry > Date() {
+            return complimentaryReviewTier
+        }
         return entitledTier
     }
 
@@ -45,8 +54,36 @@ final class SubscriptionService: ObservableObject {
     /// Bind StoreKit entitlements to a SceneMe user so two accounts on one
     /// Apple ID do not share Creator/Pro after new purchases.
     func bindAccount(userId: String?) {
+        // Never carry complimentary access from one signed-in user to another.
+        complimentaryReviewExpiresAt = nil
+        complimentaryReviewTier = .free
         boundAccountToken = userId.flatMap(UUID.init(uuidString:))
         Task { await refreshEntitlement() }
+    }
+
+    /// Apply only the explicit, server-authorized complimentary App Review grant.
+    /// This is intentionally distinct from StoreKit purchases for normal users.
+    func applyReviewAccess(_ subscription: APIService.AccountStatus.Subscription, for userId: String) {
+        guard let expected = UUID(uuidString: userId),
+              expected == boundAccountToken else { return }
+
+        var validUntil: Date?
+        if subscription.isReviewAccess == true,
+           subscription.environment == "complimentary_review",
+           subscription.status == "active",
+           subscription.tier == "pro",
+           let expiration = subscription.expiresAt {
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            validUntil = iso.date(from: expiration)
+            if validUntil == nil {
+                iso.formatOptions = [.withInternetDateTime]
+                validUntil = iso.date(from: expiration)
+            }
+        }
+
+        complimentaryReviewExpiresAt = validUntil
+        complimentaryReviewTier = (validUntil ?? .distantPast) > Date() ? .pro : .free
     }
 
     deinit {
