@@ -19,8 +19,14 @@ export class PostgresStore {
     // Only trust the explicitly installed CA; never disable certificate checks.
     const caFile = String(process.env.DATABASE_SSL_CA_FILE || "").trim();
     const sslCA = caFile ? fs.readFileSync(path.resolve(process.cwd(), caFile), "utf8") : undefined;
+    // Connection-string SSL parameters can override node-postgres' explicit
+    // ssl.ca option; remove them and enforce the pinned CA configuration here.
+    const parsedConnectionString = new URL(connectionString);
+    for (const parameter of ["sslmode", "sslrootcert", "sslcert", "sslkey"]) {
+      parsedConnectionString.searchParams.delete(parameter);
+    }
     this.pool = new Pool({
-      connectionString,
+      connectionString: parsedConnectionString.toString(),
       max: Number(process.env.DATABASE_POOL_MAX || 10),
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
