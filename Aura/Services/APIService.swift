@@ -75,6 +75,25 @@ struct APIService {
 
     struct EmptyBody: Encodable {}
 
+    /// Server-verified account feature access. Unlike StoreKit entitlements,
+    /// complimentary App Review access is tied to the authenticated SceneMe user.
+    struct AccountStatus: Decodable {
+        struct Subscription: Decodable {
+            let tier: String
+            let status: String
+            let expiresAt: String?
+            let environment: String?
+            let isReviewAccess: Bool?
+        }
+
+        let subscription: Subscription
+    }
+
+    func fetchAccountStatus(token: String) async throws -> AccountStatus {
+        try await get("me", token: token)
+    }
+
+
     struct ImprovedSceneTemplate: Decodable {
         let name: String
         let description: String
