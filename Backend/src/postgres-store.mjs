@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -13,6 +15,10 @@ const STORE_LOCK_ID = 1_938_447_102;
  */
 export class PostgresStore {
   constructor(connectionString, { sslRejectUnauthorized = true } = {}) {
+    // The Supabase shared pooler signs its TLS certificates with a private CA.
+    // Only trust the explicitly installed CA; never disable certificate checks.
+    const caFile = String(process.env.DATABASE_SSL_CA_FILE || "").trim();
+    const sslCA = caFile ? fs.readFileSync(path.resolve(process.cwd(), caFile), "utf8") : undefined;
     this.pool = new Pool({
       connectionString,
       max: Number(process.env.DATABASE_POOL_MAX || 10),
@@ -20,7 +26,9 @@ export class PostgresStore {
       connectionTimeoutMillis: 10_000,
       statement_timeout: 15_000,
       application_name: "sceneme-backend",
-      ssl: isLocalDatabase(connectionString) ? false : { rejectUnauthorized: sslRejectUnauthorized }
+      ssl: isLocalDatabase(connectionString)
+        ? false
+        : { rejectUnauthorized: sslRejectUnauthorized, ...(sslCA ? { ca: sslCA } : {}) }
     });
     this.lastRateLimitCleanupAt = 0;
   }
