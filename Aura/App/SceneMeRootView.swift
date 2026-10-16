@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 struct SceneMeRootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: SceneMeViewModel
 
     init() {
@@ -61,6 +62,12 @@ struct SceneMeRootView: View {
         }
         .task {
             await viewModel.refreshScenes()
+            await viewModel.refreshAccountAccess()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.refreshAccountAccess() }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sceneMeOpenReadyClip)) { notification in
             viewModel.openClipFromNotification(userInfo: notification.userInfo)
