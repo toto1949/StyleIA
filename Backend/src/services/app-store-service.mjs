@@ -5,6 +5,7 @@ import { config } from "../config.mjs";
 import { base64URLEncode } from "../encoding.mjs";
 import { HttpError } from "../http-utils.mjs";
 import { store } from "./store-instance.mjs";
+import { reviewAccessForUser } from "./reviewer-access.mjs";
 
 const productionURL = "https://api.storekit.apple.com";
 const sandboxURL = "https://api.storekit-sandbox.apple.com";
@@ -26,6 +27,7 @@ export const generationCreditCosts = Object.freeze({
 });
 
 export async function appStoreTierForRequest(request, userId) {
+  if (reviewAccessForUser(userId)) return "pro";
   if (config.nodeEnv !== "production" && config.enableMockGeneration) {
     return "pro";
   }
@@ -146,6 +148,8 @@ export async function processAppStoreNotification(signedPayload) {
 }
 
 export async function subscriptionStatusForUser(userId) {
+  const review = reviewAccessForUser(userId);
+  if (review) return review;
   const data = await store.snapshot();
   const entitlement = data.entitlements?.find((candidate) => candidate.userId === userId);
   if (!entitlement) {
@@ -309,6 +313,19 @@ export function ensureDueCreditGrantsInStore(data, userId, now = new Date()) {
     grantPeriodStart: null,
     now
   });
+  // One-time, finite generation allowance for the sole App Review account.
+  // Do not create App Store transactions or bypass actual AI cost budgets.
+  if (reviewAccessForUser(userId, { now })) {
+    grantCredits(data, {
+      userId,
+      grantKey: "apple-review:complimentary:v1",
+      sourceType: "adjustment",
+      tier: "pro",
+      amount: 120,
+      grantPeriodStart: null,
+      now
+    });
+  }
   if (config.nodeEnv !== "production" && config.enableMockGeneration) {
     grantCredits(data, {
       userId,
