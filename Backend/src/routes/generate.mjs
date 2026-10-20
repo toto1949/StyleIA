@@ -38,6 +38,7 @@ import { broadcastJobUpdate } from "../websocket.mjs";
 import { findScene } from "./scenes.mjs";
 import { assertSafeUserText } from "../services/content-safety-service.mjs";
 import { objectStorage } from "../services/object-storage-service.mjs";
+import { resolveVideoSourceImageURL } from "../services/video-source-url.mjs";
 import { ensureUploadReady, ensureUploadSafeForGeneration, uploadInputURL } from "./upload.mjs";
 
 const cancelledJobs = new Set();
@@ -788,8 +789,16 @@ async function runVideoGeneration(jobId) {
   broadcastJobUpdate(jobId, { type: "progress", percent: 5 });
 
   try {
+    // Source jobs retain expiring S3 URLs for backward compatibility. Fetch a
+    // fresh private URL at provider-start time, including on a queued retry.
+    const sourceJob = (await store.snapshot()).jobs.find((candidate) =>
+      candidate.jobId === job.sourceJobId &&
+      candidate.userId === job.userId &&
+      candidate.type === "scene"
+    );
+    const sourceImageURL = await resolveVideoSourceImageURL(job, sourceJob, objectStorage);
     const providerVideoURL = await generateSceneVideo({
-      imageURL: job.sourceImageURL,
+      imageURL: sourceImageURL,
       prompt: job.prompt,
       jobId,
       spokenLine: job.spokenLine || "",
