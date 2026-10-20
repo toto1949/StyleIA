@@ -31,16 +31,19 @@ final class SubscriptionService: ObservableObject {
 
     /// The tier the rest of the app honors.
     var tier: SubscriptionTier {
-        #if DEBUG
-        if let debugTierOverride {
-            return debugTierOverride
-        }
-        #endif
+        // A server-authorized, account-scoped grant must take precedence over a
+        // previously saved local Debug override (including an override of Free).
+        // Release builds never have the Debug override.
         if complimentaryReviewTier > entitledTier,
            let expiry = complimentaryReviewExpiresAt,
            expiry > Date() {
             return complimentaryReviewTier
         }
+        #if DEBUG
+        if let debugTierOverride {
+            return debugTierOverride
+        }
+        #endif
         return entitledTier
     }
 
