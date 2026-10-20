@@ -177,6 +177,7 @@ final class SceneMeViewModel: ObservableObject {
             throw SceneMeAPIError.failed("SceneMe is temporarily unavailable. Please try again later.")
         }
         adopt(auth: try await api.signIn(email: email, password: password))
+        await refreshAccountAccess()
     }
 
     func signUp(email: String, password: String, fullName: String) async throws {
@@ -184,6 +185,7 @@ final class SceneMeViewModel: ObservableObject {
             throw SceneMeAPIError.failed("SceneMe is temporarily unavailable. Please try again later.")
         }
         adopt(auth: try await api.signUp(email: email, password: password, fullName: fullName))
+        await refreshAccountAccess()
     }
 
     func signInWithApple() async throws {
@@ -196,6 +198,7 @@ final class SceneMeViewModel: ObservableObject {
             identityToken: credential.identityToken,
             fullName: credential.fullName
         ))
+        await refreshAccountAccess()
     }
 
     func signInWithGoogle() async throws {
@@ -205,6 +208,7 @@ final class SceneMeViewModel: ObservableObject {
 
         let identityToken = try await SocialAuthService.shared.signInWithGoogle()
         adopt(auth: try await api.signInWithGoogle(identityToken: identityToken, fullName: ""))
+        await refreshAccountAccess()
     }
 
     func signOut() {
@@ -256,10 +260,7 @@ final class SceneMeViewModel: ObservableObject {
         userPhoto = persistence.loadPhoto()
         customScenes = persistence.loadCustomScenes()
         subscriptionService.bindAccount(userId: newSession.userId)
-        Task {
-            await refreshAccountAccess()
-            await syncHistoryFromServer()
-        }
+        Task { await syncHistoryFromServer() }
     }
 
     /// Called when the backend rejects our token (expired session).
@@ -319,9 +320,15 @@ final class SceneMeViewModel: ObservableObject {
             let status = try await api.fetchAccountStatus(token: signedIn.accessToken)
             guard session?.userId == signedIn.userId else { return }
             subscriptionService.applyReviewAccess(status.subscription, for: signedIn.userId)
+            #if DEBUG
+            print("[SceneMe][account-access] backend tier=\(status.subscription.tier), review=\(status.subscription.isReviewAccess == true), effective tier=\(subscriptionService.tier.displayName)")
+            #endif
         } catch {
-            // Network failure must never grant privileges. StoreKit entitlements
-            // remain available; any previous review grant also expires locally.
+            // A failed request never grants access. A prior reviewer grant
+            // remains bounded by its server-issued expiration.
+            #if DEBUG
+            print("[SceneMe][account-access] GET /v1/me failed: \(error.localizedDescription)")
+            #endif
         }
     }
 

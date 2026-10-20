@@ -143,6 +143,13 @@ struct AuraTests {
         let reviewerID = "851d1d7e-9e9c-4352-a23f-389a74c21c67"
         let anotherID = "5d8c373e-4f21-4bc7-bf34-dac0512eaa60"
         defer { subscriptions.bindAccount(userId: nil) }
+        #if DEBUG
+        // Reproduces launching from Xcode after a saved "Free" dev override.
+        // The authenticated reviewer must still see their server-approved Pro tier.
+        let originalDebugTier = subscriptions.debugTierOverride
+        defer { subscriptions.debugTierOverride = originalDebugTier }
+        subscriptions.debugTierOverride = .free
+        #endif
 
         let reviewJSON = """
         {"subscription":{"tier":"pro","status":"active","environment":"complimentary_review",
