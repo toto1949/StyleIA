@@ -54,6 +54,7 @@ struct AuthView: View {
                     if mode == .signUp {
                         field(title: "Your name (optional)") {
                             TextField("", text: $fullName, prompt: prompt("Alex"))
+                                .accessibilityIdentifier("auth.fullName")
                                 .textContentType(.name)
                                 .focused($focusedField, equals: .name)
                                 .submitLabel(.next)
@@ -63,6 +64,7 @@ struct AuthView: View {
 
                     field(title: "Email") {
                         TextField("", text: $email, prompt: prompt("you@example.com"))
+                            .accessibilityIdentifier("auth.email")
                             .textContentType(.emailAddress)
                             .keyboardType(.emailAddress)
                             .textInputAutocapitalization(.never)
@@ -74,6 +76,7 @@ struct AuthView: View {
 
                     field(title: "Password") {
                         SecureField("", text: $password, prompt: prompt("At least 8 characters"))
+                            .accessibilityIdentifier("auth.password")
                             .textContentType(mode == .signUp ? .newPassword : .password)
                             .focused($focusedField, equals: .password)
                             .submitLabel(.go)
@@ -188,6 +191,7 @@ struct AuthView: View {
         }
         .buttonStyle(SceneMePressButtonStyle())
         .disabled(isSubmitting || socialProvider != nil)
+        .accessibilityIdentifier(title == "Continue with Apple" ? "auth.apple" : "auth.google")
     }
 
     private var logo: some View {
@@ -200,6 +204,7 @@ struct AuthView: View {
                     .foregroundStyle(SceneMeTheme.gold)
             )
             .font(.system(size: 40, weight: .regular, design: .serif))
+            .accessibilityIdentifier("auth.logo")
 
             Text("Place yourself anywhere.")
                 .font(.system(size: 14))
@@ -230,6 +235,7 @@ struct AuthView: View {
                         }
                 }
                 .buttonStyle(SceneMePressButtonStyle())
+                .accessibilityIdentifier(item == .signIn ? "auth.mode.signIn" : "auth.mode.signUp")
             }
         }
     }
@@ -290,6 +296,7 @@ struct AuthView: View {
         }
         .buttonStyle(SceneMePressButtonStyle())
         .disabled(!isFormValid || isSubmitting || socialProvider != nil)
+        .accessibilityIdentifier("auth.submit")
     }
 
     private func submit() {

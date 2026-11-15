@@ -56,6 +56,10 @@ enum Secrets {
         publicBaseURL.appendingPathComponent("terms")
     }
 
+    static var supportURL: URL {
+        publicBaseURL.appendingPathComponent("support")
+    }
+
     /// Google OAuth iOS client ID from Info.plist (`GIDClientID`).
     static var googleClientID: String? {
         if let env = ProcessInfo.processInfo.environment["SCENEME_GOOGLE_CLIENT_ID"]?.trimmingCharacters(in: .whitespacesAndNewlines),

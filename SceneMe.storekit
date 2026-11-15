@@ -39,7 +39,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "30 generations, filters, re-rolls, no watermark",
+              "description" : "30 non-expiring credits granted monthly, filters, re-rolls",
               "displayName" : "Creator Monthly",
               "locale" : "en_US"
             }
@@ -64,7 +64,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Creator yearly — about 2 months free",
+              "description" : "30 non-expiring credits monthly during the annual term",
               "displayName" : "Creator Yearly",
               "locale" : "en_US"
             }
@@ -89,7 +89,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited gens, Video Director with voice, companions",
+              "description" : "100 non-expiring credits monthly, Video Director, companions",
               "displayName" : "Pro Monthly",
               "locale" : "en_US"
             }
@@ -114,7 +114,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Pro yearly — best value for Video Director",
+              "description" : "100 non-expiring credits monthly during the annual term",
               "displayName" : "Pro Yearly",
               "locale" : "en_US"
             }

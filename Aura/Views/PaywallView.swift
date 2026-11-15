@@ -251,10 +251,10 @@ struct PaywallView: View {
     }
 
     private var yearlySavingsLabel: String {
-        if let savings = yearlySavingsPercent(for: selectedTier) {
+        if let savings = service.yearlySavingsPercent(for: selectedTier) {
             return "SAVE \(savings)%"
         }
-        return "SAVE 37%+"
+        return "ANNUAL"
     }
 
     // MARK: - Plan picker
@@ -385,9 +385,9 @@ struct PaywallView: View {
     private func planTagline(for tier: SubscriptionTier) -> String {
         switch tier {
         case .pro:
-            return "Unlimited stills, Video Director, companions"
+            return "100 monthly credits, Video Director, companions"
         case .creator:
-            return "30 generations, custom scenes, clean exports"
+            return "30 monthly credits, custom scenes, clean exports"
         default:
             return ""
         }
@@ -433,17 +433,17 @@ struct PaywallView: View {
         switch tier {
         case .creator:
             return [
-                "30 cinematic generations every month",
+                "30 non-expiring credits granted each month",
                 "Custom scene templates you can reuse",
                 "Outfit re-roll + cinematic filters",
                 "Clean exports without the SceneMe mark"
             ]
         case .pro:
             return [
-                "Unlimited still generations",
-                "Video Director with voice & captions",
+                "100 non-expiring credits granted each month",
+                "Video Director: silent 6, talking 23 credits",
                 "Companion photos in every scene",
-                "Max quality output for stills and clips"
+                "Standard images use 1; premium images use 2 credits"
             ]
         default:
             return []
@@ -628,10 +628,12 @@ struct PaywallView: View {
         VStack(spacing: 14) {
             Button {
                 Task {
-                    await service.restorePurchases()
+                    let message = await service.restorePurchases()
                     if service.tier > .free {
                         withAnimation { onDismiss() }
                         dismiss()
+                    } else {
+                        withAnimation { purchaseError = message }
                     }
                 }
             } label: {
@@ -647,7 +649,7 @@ struct PaywallView: View {
             .buttonStyle(SceneMePressButtonStyle())
 
             Text(
-                "Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel in iPhone Settings → Apple ID → Subscriptions."
+                "Credits are granted monthly, including on annual plans, and do not expire. Standard, companion and re-roll images use 1 credit; premium images use 2; five-second silent videos use 6; talking videos use 23. Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel in iPhone Settings → Apple ID → Subscriptions."
             )
             .font(.system(size: 10))
             .foregroundStyle(SceneMeTheme.faintText)
@@ -667,7 +669,7 @@ struct PaywallView: View {
             Image(systemName: "xmark")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(SceneMeTheme.subtleText)
-                .frame(width: 34, height: 34)
+                .frame(width: 44, height: 44)
                 .background(SceneMeTheme.surface.opacity(0.92))
                 .clipShape(Circle())
                 .overlay { Circle().stroke(SceneMeTheme.hairline, lineWidth: 1) }
@@ -685,24 +687,6 @@ struct PaywallView: View {
         case (.creator, .monthly): return .creatorMonthly
         default: return .proYearly
         }
-    }
-
-    /// Live yearly savings vs 12× monthly when StoreKit prices are available.
-    private func yearlySavingsPercent(for tier: SubscriptionTier) -> Int? {
-        let monthlyID: SceneMeProductID = tier == .pro ? .proMonthly : .creatorMonthly
-        let yearlyID: SceneMeProductID = tier == .pro ? .proYearly : .creatorYearly
-        guard
-            let monthly = service.product(for: monthlyID)?.price,
-            let yearly = service.product(for: yearlyID)?.price,
-            monthly > 0
-        else {
-            return nil
-        }
-
-        let annualIfMonthly = monthly * 12
-        guard annualIfMonthly > yearly else { return nil }
-        let saved = ((annualIfMonthly - yearly) / annualIfMonthly) * 100
-        return NSDecimalNumber(decimal: saved).intValue
     }
 
     // MARK: - Action
@@ -753,11 +737,11 @@ enum PaywallTrigger: Identifiable {
     var headline: String {
         switch self {
         case .generationLimitReached:
-            return "You've used all your free\ngenerations this month."
+            return "You need more credits\nto create this scene."
         case .featureLocked(let feature, _):
             return "Unlock \(feature)\nwith SceneMe."
         case .manualUpgrade:
-            return "Create stunning scenes\nwith no limits."
+            return "Create more cinematic scenes\nwith monthly credits."
         }
     }
 

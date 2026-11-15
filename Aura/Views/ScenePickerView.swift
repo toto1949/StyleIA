@@ -298,6 +298,7 @@ struct ScenePickerView: View {
             ) {
                 viewModel.move(to: .sceneOptions)
             }
+            .accessibilityIdentifier("scene.continue")
 
             Text("~15 seconds · Uses 1 credit")
                 .font(.system(size: 11, weight: .regular))
@@ -363,6 +364,10 @@ struct SceneOptionsView: View {
 
                         section(title: "Pose") {
                             PoseSelectorView(selection: poseBinding)
+                        }
+
+                        section(title: "Image Quality") {
+                            qualitySelector
                         }
 
                         section(title: "Add Someone") {
@@ -453,6 +458,41 @@ struct SceneOptionsView: View {
                     }
                 }
                 .buttonStyle(SceneMePressButtonStyle())
+            }
+        }
+    }
+
+    private var qualitySelector: some View {
+        HStack(spacing: 8) {
+            ForEach(ImageGenerationQuality.allCases) { quality in
+                let isSelected = (viewModel.request?.imageQuality ?? .standard) == quality
+                Button {
+                    if quality == .premium && viewModel.requireTier(.pro, feature: "Premium Image Quality") {
+                        return
+                    }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        viewModel.request?.imageQuality = quality
+                    }
+                } label: {
+                    VStack(spacing: 3) {
+                        Text(quality.title.uppercased())
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(1.2)
+                        Text(quality.detail)
+                            .font(.system(size: 10))
+                    }
+                    .foregroundStyle(isSelected ? Color.black.opacity(0.88) : SceneMeTheme.subtleText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.panel)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(isSelected ? Color.clear : SceneMeTheme.hairline, lineWidth: 1)
+                    }
+                }
+                .buttonStyle(SceneMePressButtonStyle())
+                .accessibilityIdentifier("quality.\(quality.rawValue)")
             }
         }
     }

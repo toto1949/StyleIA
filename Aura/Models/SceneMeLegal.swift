@@ -6,7 +6,17 @@ import SwiftUI
 enum SceneMeLegal {
     static var privacyURL: URL { Secrets.privacyPolicyURL }
     static var termsURL: URL { Secrets.termsOfUseURL }
+    static var supportURL: URL { Secrets.supportURL }
     static var companyURL: URL { Secrets.companyWebsiteURL }
+    static var safetyReportURL: URL {
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = "contact@zevyntalabs.com"
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: "SceneMe Safety Report")
+        ]
+        return components.url ?? supportURL
+    }
 
     /// Compact "Privacy Policy  ·  Terms of Use" footer used on auth / paywall.
     struct InlineLinks: View {
@@ -57,6 +67,26 @@ enum SceneMeLegal {
                         title: "Terms of Use",
                         url: termsURL
                     )
+
+                    Divider()
+                        .background(SceneMeTheme.hairline)
+                        .padding(.leading, 54)
+
+                    linkRow(
+                        icon: "questionmark.bubble.fill",
+                        title: "Support",
+                        url: supportURL
+                    )
+
+                    Divider()
+                        .background(SceneMeTheme.hairline)
+                        .padding(.leading, 54)
+
+                    linkRow(
+                        icon: "exclamationmark.shield.fill",
+                        title: "Report a Safety Issue",
+                        url: safetyReportURL
+                    )
                 }
                 .background(SceneMeTheme.panel)
                 .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous))
@@ -96,6 +126,7 @@ enum SceneMeLegal {
                 .contentShape(Rectangle())
             }
             .buttonStyle(SceneMePressButtonStyle())
+            .accessibilityIdentifier("profile.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
         }
     }
 }

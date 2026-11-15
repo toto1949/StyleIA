@@ -129,7 +129,9 @@ struct CustomSceneComposerView: View {
             }
 
             Button {
-                Task { await improveWithAI() }
+                viewModel.requestAIProcessingConsent {
+                    Task { await improveWithAI() }
+                }
             } label: {
                 HStack(spacing: 8) {
                     if isImproving {

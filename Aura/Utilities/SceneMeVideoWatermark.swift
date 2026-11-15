@@ -1,8 +1,18 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import UIKit
 
 /// Burns the SceneMe signature into a saved video (free-tier exports).
 enum SceneMeVideoWatermark {
+    /// AVAssetExportSession has not adopted Sendable even though this instance
+    /// is deliberately confined to the lifetime of one export operation.
+    private final class ExportSessionBox: @unchecked Sendable {
+        let value: AVAssetExportSession
+
+        init(_ value: AVAssetExportSession) {
+            self.value = value
+        }
+    }
+
     /// Returns a temporary branded mp4 when `apply` is true; otherwise returns `sourceURL`.
     static func prepareForExport(sourceURL: URL, apply: Bool) async throws -> URL {
         guard apply else { return sourceURL }
@@ -89,9 +99,10 @@ enum SceneMeVideoWatermark {
         export.videoComposition = videoComposition
         export.shouldOptimizeForNetworkUse = true
 
+        let box = ExportSessionBox(export)
         let status = await withCheckedContinuation { (continuation: CheckedContinuation<AVAssetExportSession.Status, Never>) in
-            export.exportAsynchronously {
-                continuation.resume(returning: export.status)
+            box.value.exportAsynchronously {
+                continuation.resume(returning: box.value.status)
             }
         }
 

@@ -109,7 +109,7 @@ function privacyHTML() {
     <p>We do not use your data for cross-app tracking or sell personal information.</p>
 
     <h2>Contact</h2>
-    <p>Questions: <a href="mailto:support@sceneme.app">support@sceneme.app</a></p>
+    <p>Questions: <a href="mailto:contact@zevyntalabs.com">contact@zevyntalabs.com</a></p>
     <p>Company website: <a href="https://zevyntalabs.com/">zevyntalabs.com</a></p>
     <p>Also see our <a href="${config.publicBaseURL}/terms">Terms of Use</a>.</p>
   `);
@@ -132,7 +132,8 @@ function termsHTML() {
     <p>Outputs are AI-generated. Do not present them as unaltered photographs when that would mislead others in a harmful way. Do not use SceneMe to create illegal deepfakes, non-consensual intimate imagery, or content that violates others’ rights.</p>
 
     <h2>Subscriptions</h2>
-    <p>Paid plans are billed through Apple In-App Purchase. Prices are shown in the app and charged by Apple. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period. Manage or cancel in iPhone Settings → Apple ID → Subscriptions. Free tiers have limited generations; paid tiers unlock higher limits and Pro features such as Video Director.</p>
+    <p>Paid plans are billed through Apple In-App Purchase. Prices are shown in the app and charged by Apple. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period. Manage or cancel in iPhone Settings → Apple ID → Subscriptions.</p>
+    <p>Free accounts receive three one-time starter image credits. Creator includes 30 credits for each subscription month. Pro includes 100 credits for each subscription month. Annual subscribers receive the same allowance each month during the subscription term. Unused credits remain in the account and do not expire. Standard images, companion images, and outfit rerolls use one credit; premium images use two; five-second silent videos use six; and five-second talking or lip-synced videos use 23. A failed generation that the backend records as failed is refunded under the service's credit policy.</p>
 
     <h2>Acceptable use</h2>
     <ul>
@@ -148,7 +149,8 @@ function termsHTML() {
     <p>We may suspend accounts that violate these Terms. You may delete your account in the app.</p>
 
     <h2>Contact</h2>
-    <p><a href="mailto:support@sceneme.app">support@sceneme.app</a></p>
+    <p><a href="mailto:contact@zevyntalabs.com">contact@zevyntalabs.com</a></p>
+    <p>To report unsafe, abusive, non-consensual, or otherwise prohibited content, email <a href="mailto:contact@zevyntalabs.com?subject=SceneMe%20Safety%20Report">contact@zevyntalabs.com</a> with “SceneMe Safety Report” in the subject. Do not attach private photos, passwords, authentication codes, or signed media links.</p>
     <p>Company website: <a href="https://zevyntalabs.com/">zevyntalabs.com</a></p>
     <p>Privacy details: <a href="${config.publicBaseURL}/privacy">Privacy Policy</a>.</p>
 
@@ -158,7 +160,7 @@ function termsHTML() {
 
 function supportHTML() {
   return layout("SceneMe Support", `
-    <p>Need help with SceneMe? Contact Zevynta Labs LLC at <a href="mailto:support@sceneme.app">support@sceneme.app</a>.</p>
+    <p>Need help with SceneMe? Contact Zevynta Labs LLC at <a href="mailto:contact@zevyntalabs.com">contact@zevyntalabs.com</a>.</p>
 
     <h2>When you contact us</h2>
     <p>Include your SceneMe account email, app version, device model, iOS version, and a short description of what happened. Do not email passwords, authentication codes, payment credentials, private photos, or signed media links.</p>
@@ -166,8 +168,8 @@ function supportHTML() {
     <h2>Generation help</h2>
     <ul>
       <li>If a generation is still processing, keep the job in History and try again after reconnecting.</li>
-      <li>If a generation fails, use the in-app retry option. SceneMe does not consume an image allowance for a job the backend records as failed.</li>
-      <li>For a privacy or safety concern, include “Privacy” or “Safety” in the email subject.</li>
+      <li>If a generation fails, use the in-app retry option. Credits are refunded when the backend records a billable generation as failed.</li>
+      <li>For unsafe, abusive, non-consensual, or otherwise prohibited content, use the in-app “Report a Safety Issue” link or email us with “SceneMe Safety Report” in the subject.</li>
     </ul>
 
     <h2>Subscriptions</h2>

@@ -1,0 +1,16 @@
+alter table public.credit_ledger disable row level security;
+alter table public.credit_grants disable row level security;
+alter table public.credit_accounts disable row level security;
+alter table public.rate_limit_windows disable row level security;
+alter table public.job_events disable row level security;
+alter table public.app_store_notifications disable row level security;
+alter table public.app_store_transactions disable row level security;
+alter table public.subscription_entitlements disable row level security;
+alter table public.usage_counters disable row level security;
+alter table public.generation_results disable row level security;
+alter table public.generation_jobs disable row level security;
+alter table public.uploads disable row level security;
+alter table public.sessions disable row level security;
+alter table public.auth_identities disable row level security;
+alter table public.users disable row level security;
+alter table public.schema_migrations disable row level security;

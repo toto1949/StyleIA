@@ -1,32 +1,88 @@
 import SwiftUI
 
-/// Scene thumbnail with a moody gradient fallback while loading or offline.
+/// Original, offline scene artwork. Avoids placeholder-network imagery and
+/// keeps the catalog deterministic for App Review and accessibility testing.
 struct SceneThumbnail: View {
     let scene: SceneTemplate
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                fallbackGradient
+                if let artworkName {
+                    Image(artworkName)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    fallbackGradient
 
-                if let url = scene.thumbnailURL {
-                    Color.clear
-                        .overlay {
-                            AsyncImage(url: url) { phase in
-                                if case .success(let image) = phase {
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                }
-                            }
-                        }
-                        .clipped()
+                    Circle()
+                        .fill(SceneMeTheme.gold.opacity(0.16))
+                        .frame(width: proxy.size.width * 0.9)
+                        .blur(radius: 34)
+                        .offset(x: proxy.size.width * 0.32, y: -proxy.size.height * 0.25)
+
+                    Image(systemName: sceneSymbol)
+                        .font(.system(size: min(proxy.size.width, proxy.size.height) * 0.34, weight: .ultraLight))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(Color.white.opacity(0.42))
+                        .shadow(color: .black.opacity(0.25), radius: 18, y: 10)
+                        .offset(y: -proxy.size.height * 0.06)
                 }
+
+                LinearGradient(
+                    colors: [Color.white.opacity(0.10), .clear, Color.black.opacity(0.3)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
             .contentShape(Rectangle())
             .allowsHitTesting(false)
+        }
+    }
+
+    private var artworkName: String? {
+        switch scene.id {
+        case "times-square": "SceneTimesSquare"
+        case "paris-cafe": "SceneParisCafe"
+        case "tokyo-shibuya": "SceneTokyoShibuya"
+        case "dubai-rooftop": "SceneDubaiRooftop"
+        case "santorini": "SceneSantorini"
+        case "sahara-desert": "SceneSaharaDesert"
+        case "northern-lights": "SceneNorthernLights"
+        case "maldives-villa": "SceneMaldivesVilla"
+        case "hotel-lobby": "SceneHotelLobby"
+        case "f1-paddock": "SceneGrandPrixPaddock"
+        case "yacht-mediterranean": "SceneYachtMediterranean"
+        case "art-gallery": "SceneArtGallery"
+        default: nil
+        }
+    }
+
+    private var sceneSymbol: String {
+        switch scene.id {
+        case "times-square": "building.2.crop.circle"
+        case "paris-cafe": "cup.and.saucer.fill"
+        case "tokyo-shibuya": "figure.walk"
+        case "dubai-rooftop": "building.2.fill"
+        case "santorini": "house.and.flag.fill"
+        case "sahara-desert": "sun.horizon.fill"
+        case "northern-lights": "sparkles"
+        case "maldives-villa": "water.waves"
+        case "hotel-lobby": "building.columns.fill"
+        case "f1-paddock": "flag.checkered"
+        case "yacht-mediterranean": "sailboat.fill"
+        case "art-gallery": "photo.artframe"
+        case "nba-courtside": "basketball.fill"
+        case "coachella": "music.note.list"
+        case "studio-headshot": "camera.aperture"
+        case "executive-office": "briefcase.fill"
+        case "keynote-stage": "person.wave.2.fill"
+        case "summer-beach-club": "beach.umbrella.fill"
+        case "fireworks-night": "fireworks"
+        case "red-carpet": "star.fill"
+        default: scene.category == .custom ? "wand.and.stars" : "sparkles.rectangle.stack"
         }
     }
 
@@ -157,6 +213,7 @@ struct SceneCardView: View {
             }
         }
         .buttonStyle(SceneMePressButtonStyle())
+        .accessibilityIdentifier("scene.\(scene.id)")
     }
 
     private var badgeTitle: String? {

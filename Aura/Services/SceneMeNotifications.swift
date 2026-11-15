@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 import UserNotifications
 
 /// Local notifications when background video (or other long jobs) finish.
@@ -56,9 +55,6 @@ enum SceneMeNotifications {
     }
 
     static func clearBadge() {
-        if #available(iOS 16.0, *) {
-            UNUserNotificationCenter.current().setBadgeCount(0)
-        }
-        UIApplication.shared.applicationIconBadgeNumber = 0
+        UNUserNotificationCenter.current().setBadgeCount(0)
     }
 }
