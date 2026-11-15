@@ -42,14 +42,14 @@ xcodebuild build -project Aura.xcodeproj -scheme Aura -configuration Release \
 | Dependency audit | PASS | `npm audit --omit=dev`, 2026-11-15: 0 known vulnerabilities | Re-run for every RC. |
 | iOS unit tests | PASS | 14/14 on 2026-11-15, including approved credit constants, StoreKit product/price contract, account-scoped/expiring review access and safety-report routing; iPhone 17 Pro iOS 26.5 simulator, Xcode 26.6; `/tmp/SceneMeDerivedData-test/Logs/Test/` | Increase live API/offline/entitlement coverage. |
 | Debug app first screen | PASS | Simulator launch and accessibility tree inspected | Not an end-to-end journey. |
-| App Store Release archive | PASS | Xcode 26.6 archive/export succeeded 2026-11-15. IPA is Apple Distribution-signed for `3K82B6HTAT`, `com.sceneme.app`, version `1.0 (2)`, `get-task-allow=false`; StoreKit test data absent and privacy manifest present | Apple upload/processing validation remains. |
+| App Store Release archive | PASS | Xcode 26.6 archive/export succeeded 2026-11-15. IPA is Apple Distribution-signed for `3K82B6HTAT`, `com.sceneme.app`, version `1.0 (2)`, `get-task-allow=false`; StoreKit test data absent and privacy manifest present. App Store Connect now reports Ready to Submit | Install this exact build and complete physical-device validation. |
 | Deterministic iOS UI smoke | PASS | Reran 2026-11-15: auth validation, Accessibility largest text, neutral catalog/support, default-off companion permission and screenshot/paywall contract; 5/5 passed | Extend through live authentication and core journeys. |
 | Critical iOS UI journeys | NOT TESTED | Deterministic auth/catalog/support/permission coverage exists, but no real onboarding, generation, purchase, export or deletion automation | Add backend-controlled end-to-end journeys. |
 | Real fal/OpenAI | NOT TESTED | No spending authorization | Run staging golden cases and record provider IDs/cost. |
 | S3/R2 isolation/deletion | NOT TESTED | No credentials/provider selected | Execute two-user test and restart persistence check. |
 | Apple JWS/notifications | NOT TESTED | Implementation compiles; no Apple roots/fixtures/config | Add verified fixtures and Sandbox notification test. |
 | StoreKit local lifecycle | NOT TESTED | Automated configuration-contract test verifies all four recurring products, duration and Swift mappings; no transaction lifecycle passed | Run purchase/pending/restore/upgrade/downgrade/refund scenarios in an attached StoreKit test environment. |
-| Sandbox/TestFlight | BLOCKED | Apple configuration deferred by owner | Complete matrix below after access. |
+| Sandbox/TestFlight | BLOCKED | Build 2 is Ready to Submit and assigned to the internal tester group; Notifications V2 production/Sandbox URLs are configured. No signed purchase, notification or device journey has passed | Install build 2 and complete the matrix below. |
 | Physical devices/accessibility/memory | BLOCKED | Release build signed successfully for the attached iPhone, but live journeys, VoiceOver and Instruments were not executed | Install the TestFlight build; test iPhone/iPad and profile with Instruments. |
 
 ## Backend and security
@@ -125,7 +125,7 @@ xcodebuild build -project Aura.xcodeproj -scheme Aura -configuration Release \
 ## TestFlight release sign-off
 
 - [ ] Exact version/build recorded and immutable.
-- [ ] App Store processing/privacy-manifest warnings cleared.
+- [x] App Store processing completed for build 2; no processing rejection is visible. **Device/TestFlight validation remains open.**
 - [ ] Owner, engineering and one external tester complete critical journey on physical devices.
 - [ ] Staging/production environment marker and backend build SHA recorded.
 - [ ] Crash-free run, API latency, generation failures, Apple verification failures and cost dashboard reviewed.

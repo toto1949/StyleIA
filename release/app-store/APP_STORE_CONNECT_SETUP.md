@@ -1,19 +1,19 @@
 # App Store Connect Setup Worksheet
 
-No App Store Connect mutation was performed. Fill this worksheet without committing secrets.
+Live App Store Connect configuration was updated and verified on 2026-11-15. This worksheet records the resulting state without committing secrets; submission, legal agreements, live subscription activation and public release remain owner-controlled.
 
 ## App record and signing
 
 | Field | Expected | Status |
 | --- | --- | --- |
 | Legal entity | Zevynta Labs LLC | Owner verify |
-| Bundle ID | `com.sceneme.app` | Source PASS; portal NOT TESTED |
-| SKU | Owner-defined stable internal value | BLOCKED |
-| Platform/version | iOS/iPadOS 1.0 | Source PASS |
-| Build | Increment from 1 for every upload | Owner/release action |
-| Apple team | `3K82B6HTAT`; matches every Xcode target | Owner-confirmed; portal organization/role NOT TESTED |
-| Distribution certificate/profile | Automatic or managed distribution signing | BLOCKED: read-only local audit found no distribution identity; one development profile matches the app and expires 2027-07-10 |
-| Numeric Apple app ID | `6822467260` / `APP_STORE_APPLE_ID` | Owner-provided; portal/API verification NOT TESTED |
+| Bundle ID | `com.sceneme.app` | Source/archive/portal PASS |
+| SKU | Stable existing Connect value | Portal PASS; keep private/internal |
+| Platform/version | iOS/iPadOS 1.0 | Source/portal PASS |
+| Build | 2 for the current release candidate | Uploaded and Ready to Submit; version 1.0 still references build 1 |
+| Apple team | `3K82B6HTAT`; matches every Xcode target | Archive and portal PASS |
+| Distribution certificate/profile | Apple Distribution / App Store managed profile | Archive/export PASS |
+| Numeric Apple app ID | `6822467260` / `APP_STORE_APPLE_ID` | Portal PASS |
 | App Store Server API issuer ID | `bcc9e67d-a7f4-444f-a1a2-9deefff625fd` / `APP_STORE_ISSUER_ID` | Owner-provided; API verification NOT TESTED |
 | App Store Server API key ID | `399AQ2HR33` / `APP_STORE_KEY_ID` | Owner-provided; matching `.p8` NOT PROVIDED |
 
@@ -30,7 +30,7 @@ Create one subscription group such as **SceneMe Membership** and preserve identi
 | `com.sceneme.pro.monthly` | 1 month | Pro, 100 credits/month | $14.99 | APPROVED FOR PREPARATION; activation BLOCKED |
 | `com.sceneme.pro.yearly` | 1 year | Pro, 100 credits granted monthly | $119.99 | APPROVED FOR PREPARATION; activation BLOCKED |
 
-For each product complete localization, display name, description, review screenshot, availability and tax category. Ensure upgrade/downgrade levels put Pro above Creator. Credits do not expire; annual allowances are granted monthly. Do not enable sale until the owner approves the completed financial validation and TestFlight results. Confirm renewal terms, actual localized prices and benefits match the paywall.
+Live setup now places Pro monthly/yearly at service level 1 and Creator monthly/yearly at level 2, supplies the English group/product localizations, keeps all four products at Prepare for Submission, and shows the real paywall screenshot on every product review page. Credits do not expire; annual allowances are granted monthly. Leave the first-subscription attachment and activation blocked until the owner approves the completed financial validation and TestFlight results.
 
 Commercial approval record: `release/COMMERCIAL_LIMIT_DECISION.md`. Engineering preparation is approved; live product configuration is not.
 
@@ -42,22 +42,22 @@ Store only in Render/App Store Connect secret facilities:
 - Sign in with Apple team ID, key ID and `.p8` private key.
 - Numeric App Store Apple ID: `6822467260`.
 - Current Apple Root CA DER files from [Apple PKI](https://www.apple.com/certificateauthority/) mounted as secret files; set `APP_STORE_ROOT_CA_PATHS` to their absolute paths.
-- App Store Server Notifications V2 production URL: `https://[FINAL API HOST]/v1/app-store/notifications`.
-- Sandbox URL: use the same endpoint unless operational separation is chosen.
+- App Store Server Notifications V2 production URL: `https://styleia.onrender.com/v1/app-store/notifications` (saved in Connect).
+- Sandbox URL: `https://styleia.onrender.com/v1/app-store/notifications` (saved in Connect).
 
 After configuration, request an Apple test notification, verify HTTP 200 and durable notification status, then test duplicate delivery and notification history recovery. Never paste keys into issues, chat transcripts, docs, `.env`, source or CI logs.
 
 ## App Privacy worksheet
 
-Final answers must reflect actual backend/provider behavior. Candidate data types:
+Published Connect answers currently reflect the audited archive/backend behavior:
 
 - Contact info: email, name — linked to identity; account functionality.
-- Identifiers: user ID — linked; account functionality, fraud prevention.
+- Identifiers: user ID — linked; app functionality.
 - User content: photos, videos, other content/prompts — linked; app functionality.
 - Purchases: purchase history — linked; app functionality.
-- Usage data: product interaction — linked; analytics/app functionality if collected.
+- Usage data: product interaction — linked; app functionality.
 - Diagnostics: crash/performance data — disclose only if a production SDK/service is added.
-- Tracking: No, provided no data is linked across other companies' apps/sites for advertising or brokered.
+- Tracking: No.
 
 List processors and retention: Render, PostgreSQL provider, S3/R2 provider, fal.ai, OpenAI (including photo and text safety screening), Apple, Google only if enabled, and monitoring/support vendors once selected. Reconcile answers with the final archive privacy report and `Aura/Resources/PrivacyInfo.xcprivacy`.
 
