@@ -1,6 +1,6 @@
 # SceneMe Security and Privacy Review
 
-Last updated: 2026-10-13
+Last updated: 2026-11-11
 Scope: engineering controls and disclosure inputs; not legal advice.
 
 ## Data inventory
@@ -29,6 +29,7 @@ Scope: engineering controls and disclosure inputs; not legal advice.
 - StoreKit transactions and Notifications V2 use Apple's official server library and trusted root certificates supplied at deploy time. Notification UUIDs and original transaction ownership are persisted.
 - Provider/API credentials remain server-side and all documented secret values are placeholders.
 - Production mock generation is disabled by default and missing credentials fail startup.
+- Production migrations 004–006 revoke table, sequence and future default privileges from Supabase `anon` and `authenticated`, enable RLS without public client policies on all 16 SceneMe tables, and move `citext` out of the API-exposed `public` schema. A disposable PostgreSQL rehearsal and live post-migration checks confirmed zero readable and writable tables for both client roles while the Render backend remained healthy.
 
 ## Threat review
 
@@ -36,6 +37,7 @@ Scope: engineering controls and disclosure inputs; not legal advice.
 | --- | --- | --- |
 | Cross-user photo/result access | Owner-scoped DB lookup and storage key prefix; signed GET created only during owned response serialization; hostile second-account job/upload/history HTTP checks pass | Run real S3/R2 signed-object integration suite. |
 | Public bucket exposure | App code never sets public ACL; production requires object storage | Owner must enable block-public-access, encryption, least-privilege policy and audit logs. |
+| Supabase Data API exposure | `anon`/`authenticated` have zero SceneMe table privileges and all 16 tables have RLS enabled with no client policies; the iOS app never uses Supabase keys | Re-run privilege and Supabase advisor checks after every schema change. Informational “RLS enabled, no policy” notices are intentional for this server-only API. |
 | Malicious/decompression-bomb upload | Bounded body/object size, actual Sharp decode and pixel limit | Add malware workflow if risk assessment requires it; fuzz malformed formats. |
 | SSRF through provider URL | HTTPS and host allowlist, redirects rejected, response bounded | Confirm all current fal output hostnames in staging. |
 | Duplicate paid work | Required UUID idempotency key and DB uniqueness; persisted fal request/model/phase; restart resumes queue status/result; deterministic result-object key; provider cancellation | Run a paid staging kill/restart/cancel test and reconcile provider billing records. |
@@ -78,5 +80,6 @@ Review current provider terms and data-processing agreements before launch. Engi
 4. Pre-generation image moderation and friend-photo permission attestation are implemented, but no real moderation-provider call, dedicated minor/NCII/CSAM process, or human escalation workflow exists.
 5. No backup restore drill, centralized monitoring, cost alerts or incident response exercise.
 6. Legal/privacy/terms copy and processor contracts have not been approved by qualified counsel.
+7. Supabase database health is clean and its security advisor now has only intentional informational no-policy notices; retain migration/advisor regression checks in release operations.
 
 References: [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/), [account deletion guidance](https://developer.apple.com/help/app-review/guideline-reference/5-1-1-account-deletion), [App Privacy](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy), [privacy manifests](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files), and [OpenAI moderation guidance](https://developers.openai.com/api/docs/guides/moderation).

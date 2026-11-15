@@ -21,6 +21,7 @@
 ## Database recovery
 
 - Additive migration failure before commit: the migration runner transaction rolls back and does not insert `schema_migrations`.
+- Migrations 005/006 are reversible with their checked-in `.down.sql` files, but disabling RLS or moving `citext` back into `public` weakens defense in depth. Prefer a forward fix. If rollback is unavoidable, stop writers, confirm migration/app compatibility, apply the exact down scripts in reverse order, re-run client-role privilege checks, and immediately retest `/health`, auth and catalog.
 - Migration 002 rollback/reapply was exercised locally on disposable PostgreSQL 16. Migration 003 rollback is destructive to credit history and must not be executed after accepting paid jobs; restore the pre-migration backup or deploy a forward fix instead. Exercise 003 rollback/reapply only on disposable data before production.
 - Bad data after deploy: stop writers, take a backup, restore PITR into a new database, compare row counts/representative records, then switch connection only with owner approval.
 - Legacy import: importer refuses a nonempty database. If verification fails, discard the new empty target and repeat from the original JSON/backup; do not modify the source.

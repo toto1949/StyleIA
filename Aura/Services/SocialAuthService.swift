@@ -6,6 +6,7 @@ import UIKit
 enum SocialAuthError: LocalizedError {
     case cancelled
     case missingIdentityToken
+    case missingAuthorizationCode
     case googleNotConfigured
     case missingPresenter
 
@@ -15,6 +16,8 @@ enum SocialAuthError: LocalizedError {
             return "Sign in was cancelled."
         case .missingIdentityToken:
             return "Could not read your sign-in token. Please try again."
+        case .missingAuthorizationCode:
+            return "Could not complete Apple authorization. Please try again."
         case .googleNotConfigured:
             return "Google Sign-In is not configured yet."
         case .missingPresenter:
@@ -25,6 +28,7 @@ enum SocialAuthError: LocalizedError {
 
 struct AppleSignInCredential {
     let identityToken: String
+    let authorizationCode: String
     let fullName: String
 }
 
@@ -125,6 +129,15 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
                 return
             }
 
+            guard
+                let codeData = credential.authorizationCode,
+                let authorizationCode = String(data: codeData, encoding: .utf8)
+            else {
+                appleContinuation?.resume(throwing: SocialAuthError.missingAuthorizationCode)
+                appleContinuation = nil
+                return
+            }
+
             let fullName = [
                 credential.fullName?.givenName,
                 credential.fullName?.familyName
@@ -135,6 +148,7 @@ extension SocialAuthService: ASAuthorizationControllerDelegate {
 
             appleContinuation?.resume(returning: AppleSignInCredential(
                 identityToken: identityToken,
+                authorizationCode: authorizationCode,
                 fullName: fullName
             ))
             appleContinuation = nil

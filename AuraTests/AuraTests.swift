@@ -33,6 +33,15 @@ struct AuraTests {
         #expect(scenes.allSatisfy { !$0.availableWeather.isEmpty })
         #expect(scenes.allSatisfy { $0.availableTimes.contains($0.defaultTime) })
         #expect(scenes.allSatisfy { $0.availableWeather.contains($0.defaultWeather) })
+        #expect(scenes.allSatisfy { $0.thumbnailURL == nil })
+        let catalogText = scenes
+            .flatMap { [$0.name, $0.description, $0.basePrompt] }
+            .joined(separator: " ")
+            .lowercased()
+        #expect(!catalogText.contains("picsum"))
+        #expect(!catalogText.contains("formula 1"))
+        #expect(!catalogText.contains("nba"))
+        #expect(!catalogText.contains("coachella"))
     }
 
     @Test func generationRequestDefaultsFollowScene() throws {
@@ -43,7 +52,18 @@ struct AuraTests {
         #expect(request.pose == .casual)
         #expect(request.subjectGender == .auto)
         #expect(request.hasCompanion == false)
+        #expect(request.imageQuality == .standard)
         #expect(request.previewSummary.contains("Times Square"))
+    }
+
+    @Test func approvedCreditContractMatchesPaywallModel() {
+        #expect(SubscriptionTier.free.monthlyCreditGrant == 3)
+        #expect(SubscriptionTier.creator.monthlyCreditGrant == 30)
+        #expect(SubscriptionTier.pro.monthlyCreditGrant == 100)
+        #expect(GenerationCreditCost.standardImage == 1)
+        #expect(GenerationCreditCost.premiumImage == 2)
+        #expect(GenerationCreditCost.silentVideo == 6)
+        #expect(GenerationCreditCost.talkingVideo == 23)
     }
 
     @Test func companionGenderSelectionIsPreserved() throws {
@@ -53,8 +73,10 @@ struct AuraTests {
         request.hasCompanion = true
         request.companionKind = .friend
         request.companionGender = .male
+        request.companionPhotoPermissionConfirmed = true
 
         #expect(request.companionGender == .male)
+        #expect(request.companionPhotoPermissionConfirmed)
         #expect(request.previewSummary.contains("man friend"))
     }
 
@@ -138,37 +160,39 @@ struct AuraTests {
         #expect(branded.size == input.size)
     }
 
-    @Test @MainActor func serverReviewGrantUnlocksOnlyTheMatchingAccount() throws {
+    @Test func safetyReportRouteIsPublicAndCredentialFree() {
+        let url = SceneMeLegal.safetyReportURL.absoluteString
+        #expect(url.hasPrefix("mailto:contact@zevyntalabs.com"))
+        #expect(url.contains("SceneMe%20Safety%20Report"))
+        #expect(!url.lowercased().contains("password"))
+        #expect(!url.lowercased().contains("token"))
+    }
+
+    @Test @MainActor func serverReviewGrantIsAccountScopedAndExpiring() throws {
         let subscriptions = SubscriptionService.shared
         let reviewerID = "851d1d7e-9e9c-4352-a23f-389a74c21c67"
         let anotherID = "5d8c373e-4f21-4bc7-bf34-dac0512eaa60"
         defer { subscriptions.bindAccount(userId: nil) }
-        #if DEBUG
-        // Reproduces launching from Xcode after a saved "Free" dev override.
-        // The authenticated reviewer must still see their server-approved Pro tier.
-        let originalDebugTier = subscriptions.debugTierOverride
-        defer { subscriptions.debugTierOverride = originalDebugTier }
-        subscriptions.debugTierOverride = .free
-        #endif
-
-        let reviewJSON = """
+        let activeJSON = """
         {"subscription":{"tier":"pro","status":"active","environment":"complimentary_review",
         "isReviewAccess":true,"expiresAt":"2035-12-15T23:59:59.000Z"}}
         """
-        let review = try JSONDecoder().decode(
-            APIService.AccountStatus.self, from: Data(reviewJSON.utf8)
+        let active = try JSONDecoder().decode(
+            APIService.AccountStatus.self,
+            from: Data(activeJSON.utf8)
         )
+
         subscriptions.bindAccount(userId: reviewerID)
-        subscriptions.applyReviewAccess(review.subscription, for: reviewerID)
+        subscriptions.applyReviewAccess(active.subscription, for: reviewerID)
         #expect(subscriptions.tier == .pro)
         #expect(subscriptions.tier.canAnimateToVideo)
         #expect(subscriptions.tier.canAddCompanion)
         #expect(subscriptions.tier.canUseCustomScene)
         #expect(subscriptions.tier.canRerollOutfit)
 
+        // A response belonging to the old account cannot grant the next user.
         subscriptions.bindAccount(userId: anotherID)
-        #expect(subscriptions.complimentaryReviewTier == .free)
-        subscriptions.applyReviewAccess(review.subscription, for: reviewerID)
+        subscriptions.applyReviewAccess(active.subscription, for: reviewerID)
         #expect(subscriptions.complimentaryReviewTier == .free)
 
         let ordinaryJSON = """
@@ -176,7 +200,8 @@ struct AuraTests {
         "isReviewAccess":false,"expiresAt":"2035-12-15T23:59:59.000Z"}}
         """
         let ordinary = try JSONDecoder().decode(
-            APIService.AccountStatus.self, from: Data(ordinaryJSON.utf8)
+            APIService.AccountStatus.self,
+            from: Data(ordinaryJSON.utf8)
         )
         subscriptions.applyReviewAccess(ordinary.subscription, for: anotherID)
         #expect(subscriptions.complimentaryReviewTier == .free)
@@ -186,12 +211,13 @@ struct AuraTests {
         "isReviewAccess":true,"expiresAt":"2025-01-01T00:00:00.000Z"}}
         """
         let expired = try JSONDecoder().decode(
-            APIService.AccountStatus.self, from: Data(expiredJSON.utf8)
+            APIService.AccountStatus.self,
+            from: Data(expiredJSON.utf8)
         )
         subscriptions.applyReviewAccess(expired.subscription, for: anotherID)
         #expect(subscriptions.complimentaryReviewTier == .free)
 
-        subscriptions.applyReviewAccess(review.subscription, for: anotherID)
+        subscriptions.applyReviewAccess(active.subscription, for: anotherID)
         #expect(subscriptions.complimentaryReviewTier == .pro)
         subscriptions.bindAccount(userId: nil)
         #expect(subscriptions.complimentaryReviewTier == .free)

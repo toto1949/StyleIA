@@ -31,6 +31,7 @@ No step in this document authorizes spending, production mutation, build upload 
 2. Freeze writes or place the old service in maintenance mode if importing legacy JSON.
 3. Capture PostgreSQL backup/PITR marker, legacy JSON checksum/counts and object inventory.
 4. Apply migrations through Render `preDeployCommand`; do not import twice.
+   - For migrations 005/006, verify all 16 SceneMe tables report `relrowsecurity = true`, `anon`/`authenticated` have zero table privileges, `citext` is in `extensions`, and the server-only database role still serves `/health` and `/v1/scenes`.
 5. Deploy one instance; watch startup/readiness, database connections, memory and logs.
    Existing pre-release bearer tokens lack the new issuer/audience/JTI claims and will require users to sign in again after this deployment. Announce this expected one-time development-session reset; do not weaken production token validation to preserve old tokens.
 6. Run non-destructive smoke: health/legal/catalog, test account auth, upload to a dedicated test prefix, owned signed download, then delete it.

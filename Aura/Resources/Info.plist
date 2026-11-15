@@ -30,8 +30,6 @@
 	<true/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>SceneMe saves your generated scenes and postcards to your photo library.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SceneMe accesses your photos so you can choose an image for scene generation.</string>
 	<key>STYLEIA_API_BASE_URL</key>
 	<string>https://styleia.onrender.com/v1</string>
 	<key>UIApplicationSceneManifest</key>

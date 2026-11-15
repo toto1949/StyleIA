@@ -7,6 +7,15 @@ struct SceneMeSession: Codable, Equatable {
     let email: String
     let fullName: String
     let accessToken: String
+    let refreshToken: String?
+
+    init(userId: String, email: String, fullName: String, accessToken: String, refreshToken: String? = nil) {
+        self.userId = userId
+        self.email = email
+        self.fullName = fullName
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+    }
 
     var displayName: String {
         if !fullName.isEmpty {

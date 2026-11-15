@@ -31,12 +31,12 @@ enum SubscriptionTier: Int, Comparable, Codable {
 
     // MARK: Limits
 
-    /// Generations allowed per calendar month. nil = unlimited.
-    var monthlyGenerationLimit: Int? {
+    /// Non-expiring credits granted for each subscription month.
+    var monthlyCreditGrant: Int {
         switch self {
-        case .free:    return 5
+        case .free:    return 3
         case .creator: return 30
-        case .pro:     return nil
+        case .pro:     return 100
         }
     }
 
@@ -61,10 +61,10 @@ enum SubscriptionTier: Int, Comparable, Codable {
 
     static let featureTable: [Feature] = [
         Feature(
-            title: "Generations / month",
-            freeValue: "5",
-            creatorValue: "30",
-            proValue: "Unlimited"
+            title: "Generation credits",
+            freeValue: "3 starter",
+            creatorValue: "30 / month",
+            proValue: "100 / month"
         ),
         Feature(
             title: "All scenes + weekly drops",
@@ -115,12 +115,19 @@ enum SubscriptionTier: Int, Comparable, Codable {
             proValue: "✓"
         ),
         Feature(
-            title: "Max generation quality",
+            title: "Premium image option (2 credits)",
             freeValue: nil,
             creatorValue: nil,
             proValue: "✓"
         )
     ]
+}
+
+enum GenerationCreditCost {
+    static let standardImage = 1
+    static let premiumImage = 2
+    static let silentVideo = 6
+    static let talkingVideo = 23
 }
 
 // MARK: - Product IDs
@@ -140,57 +147,5 @@ enum SceneMeProductID: String, CaseIterable {
 
     var isYearly: Bool {
         self == .creatorYearly || self == .proYearly
-    }
-}
-
-// MARK: - Monthly usage counter
-
-/// Tracks how many generations a user has made in the current calendar month.
-/// Stored in UserDefaults, keyed by user ID + month so it's naturally isolated per account.
-struct MonthlyUsageCounter {
-    private let userId: String
-
-    init(userId: String) {
-        self.userId = userId
-    }
-
-    private var currentKey: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM"
-        return "sceneme.usage.\(userId).\(formatter.string(from: Date()))"
-    }
-
-    var count: Int {
-        UserDefaults.standard.integer(forKey: currentKey)
-    }
-
-    func increment() {
-        let key = currentKey
-        let next = UserDefaults.standard.integer(forKey: key) + 1
-        UserDefaults.standard.set(next, forKey: key)
-    }
-
-    /// Returns remaining generations this month, or nil if the tier is unlimited.
-    func remaining(for tier: SubscriptionTier) -> Int? {
-        guard let limit = tier.monthlyGenerationLimit else {
-            return nil
-        }
-        return max(0, limit - count)
-    }
-
-    func hasReachedLimit(for tier: SubscriptionTier) -> Bool {
-        guard let limit = tier.monthlyGenerationLimit else {
-            return false
-        }
-        return count >= limit
-    }
-
-    /// Removes every monthly usage key for this account (used on account delete).
-    static func wipeAll(for userId: String) {
-        let prefix = "sceneme.usage.\(userId)."
-        let defaults = UserDefaults.standard
-        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
-            defaults.removeObject(forKey: key)
-        }
     }
 }

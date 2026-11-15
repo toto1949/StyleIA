@@ -30,7 +30,7 @@ final class SceneMeAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         NotificationCenter.default.post(
             name: .sceneMeOpenReadyClip,
             object: nil,
-            userInfo: userInfo as? [AnyHashable: Any]
+            userInfo: userInfo
         )
         completionHandler()
     }

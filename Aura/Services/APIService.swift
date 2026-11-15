@@ -35,6 +35,7 @@ enum SceneMeAPIError: Error, LocalizedError {
 
 /// Thin HTTP client for the SceneMe backend: auth, scenes, uploads, scene jobs.
 struct APIService {
+
     let baseURL: URL
     var session: URLSession = .shared
 
@@ -58,6 +59,7 @@ struct APIService {
 
     private struct AppleAuthRequest: Encodable {
         let identityToken: String
+        let authorizationCode: String
         let fullName: String
     }
 
@@ -71,6 +73,8 @@ struct APIService {
         let email: String
         let fullName: String
         let accessToken: String
+        let accessTokenExpiresIn: Int?
+        let refreshToken: String?
     }
 
     struct EmptyBody: Encodable {}
@@ -100,6 +104,35 @@ struct APIService {
         let outfit: String
     }
 
+    struct AccountState: Decodable {
+        struct Subscription: Decodable {
+            let tier: String
+            let status: String
+            let expiresAt: String?
+            let gracePeriodExpiresAt: String?
+            let productId: String?
+        }
+
+        struct Usage: Decodable {
+            let month: String
+            let imageGenerations: Int
+            let videoGenerations: Int
+        }
+
+        struct Credits: Decodable {
+            let balance: Int
+            let grantsNeverExpire: Bool
+            let starterCredits: Int
+            let creatorMonthlyCredits: Int
+            let proMonthlyCredits: Int
+            let latestGrantAt: String?
+        }
+
+        let subscription: Subscription
+        let credits: Credits
+        let usage: Usage
+    }
+
     private struct ImproveSceneTemplateRequest: Encodable {
         let name: String
         let description: String
@@ -122,10 +155,14 @@ struct APIService {
         )
     }
 
-    func signInWithApple(identityToken: String, fullName: String) async throws -> AuthResponse {
+    func signInWithApple(identityToken: String, authorizationCode: String, fullName: String) async throws -> AuthResponse {
         try await post(
             "auth/apple",
-            body: AppleAuthRequest(identityToken: identityToken, fullName: fullName),
+            body: AppleAuthRequest(
+                identityToken: identityToken,
+                authorizationCode: authorizationCode,
+                fullName: fullName
+            ),
             token: nil
         )
     }
@@ -138,6 +175,17 @@ struct APIService {
         )
     }
 
+    func refreshSession(refreshToken: String) async throws -> AuthResponse {
+        struct Request: Encodable { let refreshToken: String }
+        return try await post("auth/refresh", body: Request(refreshToken: refreshToken), token: nil)
+    }
+
+    func signOut(refreshToken: String) async throws {
+        struct Request: Encodable { let refreshToken: String }
+        struct Response: Decodable { let success: Bool }
+        let _: Response = try await post("auth/logout", body: Request(refreshToken: refreshToken), token: nil)
+    }
+
     func deleteAccount(token: String) async throws {
         try await delete("account", token: token)
     }
@@ -147,29 +195,53 @@ struct APIService {
         return payload.scenes
     }
 
+    func fetchAccountState(token: String) async throws -> AccountState {
+        try await get("me", token: token)
+    }
+
+    func syncSubscription(transactionID: String, token: String) async throws -> AccountState.Subscription {
+        struct Request: Encodable { let transactionId: String }
+        return try await post(
+            "subscriptions/sync",
+            body: Request(transactionId: transactionID),
+            token: token,
+            appStoreTransactionID: transactionID
+        )
+    }
+
     func improveSceneTemplate(
         name: String,
         description: String,
         outfit: String,
-        token: String
+        token: String,
+        appStoreTransactionID: String?
     ) async throws -> ImprovedSceneTemplate {
         try await post(
             "templates/improve",
             body: ImproveSceneTemplateRequest(name: name, description: description, outfit: outfit),
-            token: token
+            token: token,
+            appStoreTransactionID: appStoreTransactionID
         )
     }
 
     func post<RequestBody: Encodable, ResponseBody: Decodable>(
         _ path: String,
         body: RequestBody,
-        token: String?
+        token: String?,
+        appStoreTransactionID: String? = nil,
+        idempotencyKey: String? = nil
     ) async throws -> ResponseBody {
         var request = URLRequest(url: endpoint(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let appStoreTransactionID {
+            request.setValue(appStoreTransactionID, forHTTPHeaderField: "X-SceneMe-App-Store-Transaction-ID")
+        }
+        if let idempotencyKey {
+            request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         }
         request.httpBody = try JSONEncoder().encode(body)
 

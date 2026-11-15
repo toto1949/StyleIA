@@ -36,6 +36,7 @@ struct VideoClipPayload: Decodable {
 /// Creates scene generation jobs on the backend and polls them to completion.
 struct GenerationService {
     let api: APIService
+    var appStoreTransactionID: String? = nil
 
     private struct HistoryPayload: Decodable {
         let items: [SceneJobResponse]
@@ -56,9 +57,11 @@ struct GenerationService {
         let subjectGender: String
         let companionKind: String
         let companionGender: String
+        let companionConsentConfirmed: Bool
         let timeOfDay: String
         let weather: String
         let pose: String
+        let imageQuality: String
         let seed: Int
     }
 
@@ -98,12 +101,18 @@ struct GenerationService {
                 subjectGender: request.subjectGender.rawValue,
                 companionKind: request.companionKind.rawValue,
                 companionGender: request.companionKind == .pet ? SubjectGender.auto.rawValue : request.companionGender.rawValue,
+                companionConsentConfirmed: request.hasCompanion
+                    && request.companionKind == .friend
+                    && request.companionPhotoPermissionConfirmed,
                 timeOfDay: request.timeOfDay.rawValue,
                 weather: request.weather.rawValue,
                 pose: request.pose.rawValue,
+                imageQuality: request.imageQuality.rawValue,
                 seed: Int.random(in: 1...999_999_999)
             ),
-            token: token
+            token: token,
+            appStoreTransactionID: appStoreTransactionID,
+            idempotencyKey: UUID().uuidString.lowercased()
         )
 
         return try await waitForCompletion(jobId: job.jobId, token: token, onProgress: onProgress)
@@ -141,7 +150,9 @@ struct GenerationService {
                 spokenLine: spokenLine,
                 directionNote: directionNote
             ),
-            token: token
+            token: token,
+            appStoreTransactionID: appStoreTransactionID,
+            idempotencyKey: UUID().uuidString.lowercased()
         )
 
         if job.status == "completed", let videoURL = job.videoURL {
@@ -218,13 +229,16 @@ struct GenerationService {
     /// Regenerates only the outfit: same scene, same face, same background.
     func rerollOutfit(
         jobId: String,
+        companionConsentConfirmed: Bool,
         token: String,
         onProgress: @MainActor @escaping (Int) -> Void
     ) async throws -> GenerationResult {
         let job: SceneJobResponse = try await api.post(
             "scene-jobs/\(jobId)/reroll",
-            body: APIService.EmptyBody(),
-            token: token
+            body: ["companionConsentConfirmed": companionConsentConfirmed],
+            token: token,
+            appStoreTransactionID: appStoreTransactionID,
+            idempotencyKey: UUID().uuidString.lowercased()
         )
 
         return try await waitForCompletion(jobId: job.jobId, token: token, onProgress: onProgress)

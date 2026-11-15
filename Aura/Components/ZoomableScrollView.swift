@@ -71,7 +71,7 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         var minZoom: CGFloat
         var maxZoom: CGFloat
         var onSingleTap: (() -> Void)?
-        weak var scrollView: UIScrollView?
+        var scrollView: UIScrollView?
         let hostingController = UIHostingController(rootView: AnyView(EmptyView()))
 
         init(minZoom: CGFloat, maxZoom: CGFloat, onSingleTap: (() -> Void)?) {
@@ -79,6 +79,14 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
             self.maxZoom = maxZoom
             self.onSingleTap = onSingleTap
         }
+
+        // Work around a Swift 6.3 optimizer crash in Release/Archive builds
+        // when it synthesizes an isolated deinitializer for a generic
+        // UIViewRepresentable coordinator (swiftlang/swift#87462). A concrete,
+        // non-inlined deinitializer preserves the same runtime behavior while
+        // allowing the optimized App Store build to compile.
+        @inline(never)
+        deinit {}
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             hostingController.view

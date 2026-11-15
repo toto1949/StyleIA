@@ -68,6 +68,10 @@ See `Backend/.env.example` and `Backend/README.md`. Required for production:
 | `STYLEAI_JWT_SECRET` | Session tokens (≥ 32 chars) |
 | `FAL_KEY` | fal.ai API key (server only) |
 | `APPLE_CLIENT_ID` | Sign in with Apple audience |
+| `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Apple credential revocation on account deletion |
+| `APP_STORE_ISSUER_ID`, `APP_STORE_KEY_ID`, `APP_STORE_PRIVATE_KEY` | Server-side subscription verification |
+| `STYLEAI_DATA_ENCRYPTION_KEY` | Encrypts stored Apple revocation tokens |
+| `OPENAI_API_KEY` | Text safety checks and optional custom-scene enhancement |
 | `PUBLIC_BASE_URL` / `RENDER_EXTERNAL_URL` | Public HTTPS origin for uploads + legal pages |
 
 Cost / quality knobs: `FAL_MULTI_MODEL`, `FAL_KONTEXT_NUM_INFERENCE_STEPS`, `STYLEAI_REUSE_IDENTICAL_RESULTS`, `STYLEAI_VIDEO_RESOLUTION`.
@@ -79,8 +83,8 @@ Cost / quality knobs: `FAL_MULTI_MODEL`, `FAL_KONTEXT_NUM_INFERENCE_STEPS`, `STY
 Render Blueprint:
 
 1. Dashboard → **New** → **Blueprint** → select this repo (`render.yaml`)
-2. Set `FAL_KEY`, `APPLE_CLIENT_ID` (and optional `GOOGLE_CLIENT_ID`)
-3. Prefer a paid plan + persistent disk before launch (free tier wipes data on restart)
+2. Set the required secret variables listed above (and optional `GOOGLE_CLIENT_ID`)
+3. Confirm the `0.5c-512mb` service and `/var/data` persistent disk before launch
 
 After merge, redeploy so production picks up backend changes.
 
@@ -92,15 +96,15 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and PR:
 
 1. **Backend lint/syntax** — `node --check` on server modules  
 2. **Companion prompt regression** — `npm run test:companions`  
-3. **Mock smoke test** — boots the API and runs `scripts/smoke-test.mjs`
+3. **Subscription gates** — `npm run test:subscriptions`
+4. **Mock smoke test** — auth, safety, image/video, legal, and deletion flows
 
 Locally:
 
 ```bash
 cd Backend
 npm install
-npm run test:companions
-npm run test:smoke   # starts mock server, runs smoke, then exits
+npm test   # starts a mock server, runs all backend checks, then exits
 ```
 
 iOS unit tests (on a Mac):
@@ -123,7 +127,13 @@ xcodebuild test \
 - IAP product IDs match `SceneMe.storekit` / `SubscriptionTier`
 - Restore Purchases on Paywall + Profile
 - Account deletion in Profile
+- Explicit third-party AI consent before any personal content is sent
+- App Store Server API entitlement checks and server-side monthly limits
 - Allow notifications for clip-ready alerts
+
+The release owner must complete the account-level App Store Connect and Render
+steps in `APP_STORE_SUBMISSION.md`; those require private credentials and cannot
+be completed from source code alone.
 
 ---
 

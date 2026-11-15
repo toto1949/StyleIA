@@ -418,7 +418,7 @@ if (!privacyHTML.includes("Privacy Policy") || !privacyHTML.includes("Zevynta La
 if (!termsHTML.includes("Terms of Use") || !termsHTML.includes("Subscriptions") || !termsHTML.includes("zevyntalabs.com")) {
   fail("terms page missing expected content");
 }
-if (!supportHTML.includes("SceneMe Support") || !supportHTML.includes("support@sceneme.app")) {
+if (!supportHTML.includes("SceneMe Support") || !supportHTML.includes("contact@zevyntalabs.com")) {
   fail("support page missing expected content");
 }
 const privacyHead = await fetch(`${base}/privacy`, { method: "HEAD" });

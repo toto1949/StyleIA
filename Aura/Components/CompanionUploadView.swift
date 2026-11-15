@@ -15,44 +15,44 @@ struct CompanionUploadView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(SceneMeTheme.surface)
-                        .frame(width: 42, height: 42)
-
-                    if let companion = viewModel.companionPhoto {
-                        Image(uiImage: companion)
-                            .resizable()
-                            .scaledToFill()
+            Toggle(isOn: $isEnabled) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(SceneMeTheme.surface)
                             .frame(width: 42, height: 42)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    } else {
-                        Image(systemName: companionKind.wrappedValue == .pet ? "pawprint.fill" : "person.fill.badge.plus")
-                            .font(.system(size: 17, weight: .semibold))
+
+                        if let companion = viewModel.companionPhoto {
+                            Image(uiImage: companion)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 42, height: 42)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        } else {
+                            Image(systemName: companionKind.wrappedValue == .pet ? "pawprint.fill" : "person.fill.badge.plus")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(SceneMeTheme.subtleText)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Bring a Friend or Pet")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(SceneMeTheme.text)
+
+                        Text(companionKind.wrappedValue == .pet
+                            ? "Upload your pet's photo to appear together"
+                            : "Upload a second photo to appear together")
+                            .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(SceneMeTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Bring a Friend or Pet")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(SceneMeTheme.text)
-
-                    Text(companionKind.wrappedValue == .pet
-                        ? "Upload your pet's photo to appear together"
-                        : "Upload a second photo to appear together")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(SceneMeTheme.subtleText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: $isEnabled)
-                    .labelsHidden()
-                    .tint(SceneMeTheme.gold)
             }
+            .toggleStyle(.switch)
+            .tint(SceneMeTheme.gold)
+            .accessibilityLabel("Add a companion")
+            .accessibilityIdentifier("companion.enabled")
 
             if isEnabled {
                 HStack(spacing: 8) {
@@ -81,6 +81,19 @@ struct CompanionUploadView: View {
                                 .foregroundStyle(SceneMeTheme.gold)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+
+                        Toggle(isOn: Binding(
+                            get: { viewModel.request?.companionPhotoPermissionConfirmed ?? false },
+                            set: { viewModel.request?.companionPhotoPermissionConfirmed = $0 }
+                        )) {
+                            Text("I have this person's permission to use their photo for AI generation.")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(SceneMeTheme.subtleText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .tint(SceneMeTheme.gold)
+                        .accessibilityHint("Required before generating with a friend's photo")
+                        .accessibilityIdentifier("companion.permission")
                     }
                 }
 
@@ -113,7 +126,16 @@ struct CompanionUploadView: View {
                 .stroke(SceneMeTheme.hairline, lineWidth: 1)
         }
         .onAppear {
-            isEnabled = viewModel.companionPhoto != nil
+            #if targetEnvironment(simulator)
+            if ProcessInfo.processInfo.environment["SCENEME_UI_TEST_COMPANION_ENABLED"] == "1" {
+                isEnabled = true
+            }
+            #endif
+            // SwiftUI can re-run onAppear when the expanded controls are
+            // inserted. Never force an explicit user opt-in back to false.
+            if viewModel.companionPhoto != nil {
+                isEnabled = true
+            }
         }
         .onChange(of: isEnabled) { _, enabled in
             if !enabled {
@@ -126,6 +148,7 @@ struct CompanionUploadView: View {
             }
         }
         .onChange(of: companionKind.wrappedValue) { _, kind in
+            viewModel.request?.companionPhotoPermissionConfirmed = false
             guard kind == .friend,
                   viewModel.request?.companionGender == .auto,
                   let subjectGender = viewModel.request?.subjectGender,

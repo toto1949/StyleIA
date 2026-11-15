@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Photos
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -72,6 +73,7 @@ final class SceneMeViewModel: ObservableObject {
     @Published var isGenerating = false
     @Published var isRerolling = false
     @Published var isAnimating = false
+    @Published private(set) var isDeletingAccount = false
     @Published var presentVideoPlayer = false
     /// Which directed clip is open in the fullscreen player.
     @Published var playingVideoClip: SceneVideoClip?
@@ -81,6 +83,10 @@ final class SceneMeViewModel: ObservableObject {
 
     /// Set to show the paywall sheet; cleared on dismiss.
     @Published var paywallTrigger: PaywallTrigger?
+
+    /// Explicit consent is required before photos or creative text leave the
+    /// device for processing by SceneMe's third-party AI providers.
+    @Published var isAIProcessingConsentPresented = false
 
     @Published var currentResult: GenerationResult?
     @Published var resultImage: UIImage?
@@ -92,7 +98,9 @@ final class SceneMeViewModel: ObservableObject {
     private let analyzer: StyleIAImageAnalyzing
     private let sessionStore = SessionStore()
     private var persistence = SceneMeHistoryStore(userId: nil)
-    private var usageCounter: MonthlyUsageCounter?
+    /// Display mirror of the server-owned usage counter. It is never used as
+    /// authorization; the backend remains the billable source of truth.
+    @Published private(set) var serverCreditBalance = 0
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -101,18 +109,66 @@ final class SceneMeViewModel: ObservableObject {
     private var suggestedCrop: CGRect?
     private var generationTask: Task<Void, Never>?
     private var animationTask: Task<Void, Never>?
+    private var sessionRefreshTask: Task<SceneMeSession, Error>?
     private var currentJobId: String?
+    private var pendingAIConsentAction: (() -> Void)?
 
     // MARK: - Subscription convenience
 
     var currentTier: SubscriptionTier { subscriptionService.tier }
 
     var generationsRemainingThisMonth: Int? {
-        usageCounter?.remaining(for: currentTier)
+        serverCreditBalance
     }
 
     var hasReachedGenerationLimit: Bool {
-        usageCounter?.hasReachedLimit(for: currentTier) ?? false
+        serverCreditBalance < GenerationCreditCost.standardImage
+    }
+
+    var hasAIProcessingConsent: Bool {
+        guard let userId = session?.userId else { return false }
+        return UserDefaults.standard.bool(forKey: Self.aiConsentKey(for: userId))
+    }
+
+    /// Runs an AI-backed action immediately when consent exists, or presents
+    /// the disclosure and resumes only after the user explicitly allows it.
+    func requestAIProcessingConsent(then action: @escaping () -> Void) {
+        guard hasAIProcessingConsent else {
+            pendingAIConsentAction = action
+            isAIProcessingConsentPresented = true
+            return
+        }
+        action()
+    }
+
+    func reviewAIProcessingConsent() {
+        pendingAIConsentAction = nil
+        isAIProcessingConsentPresented = true
+    }
+
+    func allowAIProcessing() {
+        guard let userId = session?.userId else { return }
+        UserDefaults.standard.set(true, forKey: Self.aiConsentKey(for: userId))
+        isAIProcessingConsentPresented = false
+        let action = pendingAIConsentAction
+        pendingAIConsentAction = nil
+        objectWillChange.send()
+        action?()
+    }
+
+    func cancelAIProcessingConsentRequest() {
+        pendingAIConsentAction = nil
+    }
+
+    func revokeAIProcessingConsent() {
+        guard let userId = session?.userId else { return }
+        UserDefaults.standard.removeObject(forKey: Self.aiConsentKey(for: userId))
+        pendingAIConsentAction = nil
+        userPhotoS3Key = nil
+        companionS3Key = nil
+        isAIProcessingConsentPresented = false
+        objectWillChange.send()
+        notice = "AI processing permission was withdrawn."
     }
 
     /// Shows the paywall sheet for a locked feature; returns false if user already has access.
@@ -124,7 +180,18 @@ final class SceneMeViewModel: ObservableObject {
     }
 
     convenience init() {
+        #if targetEnvironment(simulator)
+        let processInfo = ProcessInfo.processInfo
+        let isUITestAuthenticated = processInfo.arguments.contains("-ui-testing-authenticated")
+            || processInfo.environment["SCENEME_UI_TEST_AUTHENTICATED"] == "1"
+            || UserDefaults.standard.bool(forKey: "SCENEME_UI_TEST_AUTHENTICATED")
+        self.init(
+            api: isUITestAuthenticated ? nil : APIService(),
+            analyzer: VisionStyleIAImageAnalyzer()
+        )
+        #else
         self.init(api: APIService(), analyzer: VisionStyleIAImageAnalyzer())
+        #endif
     }
 
     init(
@@ -133,10 +200,29 @@ final class SceneMeViewModel: ObservableObject {
     ) {
         self.api = api
         self.analyzer = analyzer
+        #if targetEnvironment(simulator)
+        let launchArguments = ProcessInfo.processInfo.arguments
+        let isUITestAuthenticated = launchArguments.contains("-ui-testing-authenticated")
+            || ProcessInfo.processInfo.environment["SCENEME_UI_TEST_AUTHENTICATED"] == "1"
+            || UserDefaults.standard.bool(forKey: "SCENEME_UI_TEST_AUTHENTICATED")
+        if launchArguments.contains("-ui-testing-reset-session") {
+            sessionStore.clear()
+        }
+        if isUITestAuthenticated {
+            session = SceneMeSession(
+                userId: "ui-test-user",
+                email: "reviewer@example.com",
+                fullName: "App Reviewer",
+                accessToken: "ui-test-token"
+            )
+        } else {
+            session = sessionStore.load()
+        }
+        #else
         session = sessionStore.load()
+        #endif
         if let session {
             persistence = SceneMeHistoryStore(userId: session.userId)
-            usageCounter = MonthlyUsageCounter(userId: session.userId)
             profile = UserProfile(displayName: session.displayName)
             userPhoto = persistence.loadPhoto()
             subscriptionService.bindAccount(userId: session.userId)
@@ -145,8 +231,20 @@ final class SceneMeViewModel: ObservableObject {
         favoriteIds = persistence.loadFavorites()
         customScenes = persistence.loadCustomScenes()
 
-        // Re-render views reading currentTier when entitlements (or the debug
-        // override) change, since they observe this view model, not the service.
+        #if targetEnvironment(simulator)
+        if isUITestAuthenticated {
+            // A deterministic, entirely local state for UI automation. This
+            // branch is excluded from device/App Store builds and never calls
+            // the API.
+            userPhoto = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16)).image { context in
+                UIColor.systemGray.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
+            }
+        }
+        #endif
+
+        // Re-render views reading currentTier when entitlements change, since
+        // they observe this view model, not the service.
         subscriptionService.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -154,12 +252,38 @@ final class SceneMeViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Persist every newly verified StoreKit entitlement on the backend as
+        // soon as purchase, restore, renewal, or Transaction.updates changes
+        // the active transaction. Protected API calls still re-verify the
+        // transaction, so this is synchronization rather than authorization.
+        subscriptionService.$latestTransactionID
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] transactionID in
+                Task { [weak self] in
+                    await self?.syncSubscriptionWithServer(transactionID: transactionID)
+                }
+            }
+            .store(in: &cancellables)
+
+        #if targetEnvironment(simulator)
+        if session != nil, !isUITestAuthenticated {
+            Task {
+                await refreshAccountAccess()
+                await syncHistoryFromServer()
+                await syncAccountStateFromServer()
+            }
+        }
+        #else
         if session != nil {
             Task {
                 await refreshAccountAccess()
                 await syncHistoryFromServer()
+                await syncAccountStateFromServer()
             }
         }
+        #endif
     }
 
     var isAuthenticated: Bool {
@@ -177,6 +301,9 @@ final class SceneMeViewModel: ObservableObject {
             throw SceneMeAPIError.failed("SceneMe is temporarily unavailable. Please try again later.")
         }
         adopt(auth: try await api.signIn(email: email, password: password))
+        // Do not return control to the signed-in UI until the account-scoped
+        // server entitlement has been applied. Otherwise the App Review user
+        // can briefly see Free-tier paywalls after a successful login.
         await refreshAccountAccess()
     }
 
@@ -196,6 +323,7 @@ final class SceneMeViewModel: ObservableObject {
         let credential = try await SocialAuthService.shared.signInWithApple()
         adopt(auth: try await api.signInWithApple(
             identityToken: credential.identityToken,
+            authorizationCode: credential.authorizationCode,
             fullName: credential.fullName
         ))
         await refreshAccountAccess()
@@ -213,6 +341,9 @@ final class SceneMeViewModel: ObservableObject {
 
     func signOut() {
         cancelInFlightWork()
+        if let api, let refreshToken = session?.refreshToken {
+            Task { try? await api.signOut(refreshToken: refreshToken) }
+        }
         SocialAuthService.shared.signOutGoogle()
         sessionStore.clear()
         session = nil
@@ -222,15 +353,19 @@ final class SceneMeViewModel: ObservableObject {
 
     /// Deletes the account and all server-side data, then signs out locally.
     func deleteAccount() async {
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
         cancelInFlightWork()
         let userId = session?.userId
-        guard let api, let token = session?.accessToken else {
+        guard let api else {
             wipeLocalAccountData(userId: userId)
             signOut()
             return
         }
 
         do {
+            let token = try await token(using: api)
             try await api.deleteAccount(token: token)
             wipeLocalAccountData(userId: userId)
             signOut()
@@ -248,19 +383,22 @@ final class SceneMeViewModel: ObservableObject {
             userId: auth.userId,
             email: auth.email,
             fullName: auth.fullName,
-            accessToken: auth.accessToken
+            accessToken: auth.accessToken,
+            refreshToken: auth.refreshToken
         )
         sessionStore.save(newSession)
         session = newSession
         profile = UserProfile(displayName: newSession.displayName)
-        usageCounter = MonthlyUsageCounter(userId: newSession.userId)
         persistence = SceneMeHistoryStore(userId: newSession.userId)
         history = persistence.loadHistory()
         favoriteIds = persistence.loadFavorites()
         userPhoto = persistence.loadPhoto()
         customScenes = persistence.loadCustomScenes()
         subscriptionService.bindAccount(userId: newSession.userId)
-        Task { await syncHistoryFromServer() }
+        Task {
+            await syncHistoryFromServer()
+            await syncAccountStateFromServer()
+        }
     }
 
     /// Called when the backend rejects our token (expired session).
@@ -282,12 +420,16 @@ final class SceneMeViewModel: ObservableObject {
     private func wipeLocalAccountData(userId: String?) {
         guard let userId else { return }
         SceneMeHistoryStore(userId: userId).wipeAll()
-        MonthlyUsageCounter.wipeAll(for: userId)
+        UserDefaults.standard.removeObject(forKey: Self.aiConsentKey(for: userId))
+    }
+
+    private static func aiConsentKey(for userId: String) -> String {
+        "sceneme.aiProcessingConsent.v1.\(userId)"
     }
 
     private func clearPersonalState() {
         persistence = SceneMeHistoryStore(userId: nil)
-        usageCounter = nil
+        serverCreditBalance = 0
         history = []
         favoriteIds = []
         customScenes = []
@@ -311,28 +453,36 @@ final class SceneMeViewModel: ObservableObject {
         tab = .home
     }
 
-    /// Refresh the signed-in user's server-issued feature grant. Sign-in, app
-    /// foregrounding and stored-session restoration all invoke this method.
-    /// Only the account matching the current Keychain session can receive it.
+    /// Refresh the reviewer grant from the signed-in user's server session.
+    /// The same serialized refresh-token path used by generation requests is
+    /// required here so a restored, expired access token cannot hide a valid
+    /// complimentary review entitlement.
     func refreshAccountAccess() async {
         guard let api, let signedIn = session else { return }
         do {
-            let status = try await api.fetchAccountStatus(token: signedIn.accessToken)
+            let accessToken = try await token(using: api)
+            let account = try await api.fetchAccountStatus(token: accessToken)
             guard session?.userId == signedIn.userId else { return }
-            subscriptionService.applyReviewAccess(status.subscription, for: signedIn.userId)
+            subscriptionService.applyReviewAccess(account.subscription, for: signedIn.userId)
             #if DEBUG
-            print("[SceneMe][account-access] backend tier=\(status.subscription.tier), review=\(status.subscription.isReviewAccess == true), effective tier=\(subscriptionService.tier.displayName)")
+            print("[SceneMe][account-access] backend tier=\(account.subscription.tier), review=\(account.subscription.isReviewAccess == true), effective tier=\(subscriptionService.tier.displayName)")
             #endif
+        } catch SceneMeAPIError.unauthorized {
+            // `token(using:)` has already cleared an invalid account session.
         } catch {
-            // A failed request never grants access. A prior reviewer grant
-            // remains bounded by its server-issued expiration.
+            // A network failure never creates access. A previously verified
+            // grant remains bounded by its server-supplied expiration date.
             #if DEBUG
             print("[SceneMe][account-access] GET /v1/me failed: \(error.localizedDescription)")
             #endif
         }
     }
 
-    /// Pulls this user's completed jobs from the backend and merges into local gallery.
+    /// Re-fetch this account's history to replace expiring media URLs.
+    func refreshHistoryFromServer() async {
+        await syncHistoryFromServer()
+    }
+
     private func syncHistoryFromServer() async {
         guard let api, let userId = session?.userId else { return }
         do {
@@ -348,24 +498,49 @@ final class SceneMeViewModel: ObservableObject {
         }
     }
 
+    private func syncAccountStateFromServer() async {
+        guard let api, let userId = session?.userId else { return }
+        do {
+            let token = try await token(using: api)
+            let state = try await api.fetchAccountState(token: token)
+            guard session?.userId == userId else { return }
+            serverCreditBalance = state.credits.balance
+        } catch {
+            // Offline state remains a display hint only; the server still
+            // enforces subscription features and billable quotas.
+        }
+    }
+
+    private func syncSubscriptionWithServer(transactionID: String?) async {
+        guard let api, let userId = session?.userId else { return }
+
+        do {
+            let token = try await token(using: api)
+            if let transactionID {
+                _ = try await api.syncSubscription(transactionID: transactionID, token: token)
+            }
+            guard session?.userId == userId else { return }
+            await syncAccountStateFromServer()
+        } catch {
+            // StoreKit remains the local display source while offline. The
+            // backend fails closed on paid features until verification works.
+        }
+    }
+
     private static func mergeHistory(local: [GenerationResult], remote: [GenerationResult]) -> [GenerationResult] {
         var byId: [String: GenerationResult] = [:]
         for item in local {
             byId[item.id] = item
         }
         for item in remote {
-            if var existing = byId[item.id] {
-                if !item.videoClips.isEmpty {
-                    existing.videoClips = Self.mergeClips(local: existing.videoClips, remote: item.videoClips)
-                    existing.videoURL = existing.videoClips.first?.videoURL ?? item.videoURL ?? existing.videoURL
-                    existing.videoCaption = existing.videoClips.first?.captionText ?? item.videoCaption ?? existing.videoCaption
-                } else if item.videoURL != nil {
-                    existing.videoURL = item.videoURL
-                    if let caption = item.videoCaption, !caption.isEmpty {
-                        existing.videoCaption = caption
-                    }
-                }
-                byId[item.id] = existing
+            if let existing = byId[item.id] {
+                // Server history has newly signed private-media URLs; use the
+                // refreshed image URL rather than locally cached expired URLs.
+                var refreshed = item
+                refreshed.videoClips = Self.mergeClips(local: existing.videoClips, remote: item.videoClips)
+                refreshed.videoURL = refreshed.videoClips.first?.videoURL ?? item.videoURL ?? existing.videoURL
+                refreshed.videoCaption = refreshed.videoClips.first?.captionText ?? item.videoCaption ?? existing.videoCaption
+                byId[item.id] = refreshed
             } else {
                 byId[item.id] = item
             }
@@ -454,7 +629,8 @@ final class SceneMeViewModel: ObservableObject {
             name: name,
             description: description,
             outfit: outfit,
-            token: token
+            token: token,
+            appStoreTransactionID: subscriptionService.latestTransactionID
         )
     }
 
@@ -498,6 +674,7 @@ final class SceneMeViewModel: ObservableObject {
         companionPhoto = image
         companionS3Key = nil
         request?.hasCompanion = true
+        request?.companionPhotoPermissionConfirmed = false
     }
 
     func removeCompanion() {
@@ -505,11 +682,18 @@ final class SceneMeViewModel: ObservableObject {
         companionItem = nil
         companionS3Key = nil
         request?.hasCompanion = false
+        request?.companionPhotoPermissionConfirmed = false
     }
 
     // MARK: - Generation
 
     func startGeneration() {
+        requestAIProcessingConsent { [weak self] in
+            self?.startGenerationAfterConsent()
+        }
+    }
+
+    private func startGenerationAfterConsent() {
         guard let request else { return }
 
         guard !(request.hasCompanion
@@ -519,8 +703,22 @@ final class SceneMeViewModel: ObservableObject {
             return
         }
 
-        // Check monthly generation limit before starting.
-        if hasReachedGenerationLimit {
+        guard !(request.hasCompanion
+                && request.companionKind == .friend
+                && !request.companionPhotoPermissionConfirmed) else {
+            notice = "Confirm that you have this person's permission to use their photo."
+            return
+        }
+
+        // Display-only preflight. The backend atomically enforces the ledger.
+        let requiredCredits = request.imageQuality == .premium
+            ? GenerationCreditCost.premiumImage
+            : GenerationCreditCost.standardImage
+        if serverCreditBalance < requiredCredits {
+            if currentTier == .pro {
+                notice = "This image needs \(requiredCredits) credits. Your next subscription-month grant will be added automatically."
+                return
+            }
             let needed: SubscriptionTier = currentTier == .free ? .creator : .pro
             paywallTrigger = .generationLimitReached(remaining: 0, tierNeeded: needed)
             return
@@ -532,6 +730,12 @@ final class SceneMeViewModel: ObservableObject {
 
     /// Remix from the result screen: change time/weather and regenerate in place.
     func remix(timeOfDay: TimeOfDay? = nil, weather: WeatherOption? = nil) {
+        requestAIProcessingConsent { [weak self] in
+            self?.remixAfterConsent(timeOfDay: timeOfDay, weather: weather)
+        }
+    }
+
+    private func remixAfterConsent(timeOfDay: TimeOfDay?, weather: WeatherOption?) {
         guard var updated = request else { return }
         if let timeOfDay {
             updated.timeOfDay = timeOfDay
@@ -547,19 +751,38 @@ final class SceneMeViewModel: ObservableObject {
     /// Regenerates only the outfit, keeping the scene, face and background.
     func rerollOutfit() {
         if requireTier(.creator, feature: "Outfit Re-roll") { return }
+        requestAIProcessingConsent { [weak self] in
+            self?.rerollOutfitAfterConsent()
+        }
+    }
+
+    private func rerollOutfitAfterConsent() {
         guard let jobId = currentJobId, let api else { return }
+        guard serverCreditBalance >= GenerationCreditCost.standardImage else {
+            notice = "An outfit re-roll needs 1 credit."
+            return
+        }
 
         isRerolling = true
         let ownerUserId = session?.userId
         generationTask = Task {
             do {
                 let token = try await token(using: api)
-                let service = GenerationService(api: api)
-                let result = try await service.rerollOutfit(jobId: jobId, token: token) { [weak self] progress in
+                let service = GenerationService(
+                    api: api,
+                    appStoreTransactionID: subscriptionService.latestTransactionID
+                )
+                let result = try await service.rerollOutfit(
+                    jobId: jobId,
+                    companionConsentConfirmed: request?.companionKind != .friend
+                        || request?.companionPhotoPermissionConfirmed == true,
+                    token: token
+                ) { [weak self] progress in
                     self?.generationProgress = progress
                 }
                 try Task.checkCancellation()
                 try await adopt(result: result, forUserId: ownerUserId)
+                await syncAccountStateFromServer()
             } catch is CancellationError {
                 // User cancelled; nothing to surface.
             } catch SceneMeAPIError.unauthorized {
@@ -580,6 +803,27 @@ final class SceneMeViewModel: ObservableObject {
     /// and is stored alongside prior clips so all can be replayed.
     func animateScene(motionStyle: VideoMotionStyle, spokenLine: String, directionNote: String = "") {
         if requireTier(.pro, feature: "Video Director") { return }
+        let requiredCredits = motionStyle == .talking
+            ? GenerationCreditCost.talkingVideo
+            : GenerationCreditCost.silentVideo
+        guard serverCreditBalance >= requiredCredits else {
+            notice = "This clip needs \(requiredCredits) credits. Your next subscription-month grant will be added automatically."
+            return
+        }
+        requestAIProcessingConsent { [weak self] in
+            self?.animateSceneAfterConsent(
+                motionStyle: motionStyle,
+                spokenLine: spokenLine,
+                directionNote: directionNote
+            )
+        }
+    }
+
+    private func animateSceneAfterConsent(
+        motionStyle: VideoMotionStyle,
+        spokenLine: String,
+        directionNote: String
+    ) {
         guard let result = currentResult else { return }
         guard let api, let jobId = currentJobId else { return }
 
@@ -591,7 +835,10 @@ final class SceneMeViewModel: ObservableObject {
             await SceneMeNotifications.requestPermissionIfNeeded()
             do {
                 let token = try await token(using: api)
-                let clip = try await GenerationService(api: api).animate(
+                let clip = try await GenerationService(
+                    api: api,
+                    appStoreTransactionID: subscriptionService.latestTransactionID
+                ).animate(
                     jobId: jobId,
                     motionStyle: motionStyle,
                     spokenLine: spokenLine,
@@ -734,7 +981,10 @@ final class SceneMeViewModel: ObservableObject {
                     throw SceneMeAPIError.missingPhoto
                 }
 
-                let service = GenerationService(api: api)
+                let service = GenerationService(
+                    api: api,
+                    appStoreTransactionID: subscriptionService.latestTransactionID
+                )
                 let result = try await service.generate(
                     request: request,
                     s3Key: s3Key,
@@ -749,7 +999,7 @@ final class SceneMeViewModel: ObservableObject {
 
                 try await adopt(result: result, forUserId: ownerUserId)
                 if session?.userId == ownerUserId {
-                    usageCounter?.increment()
+                    await syncAccountStateFromServer()
                     isGenerating = false
                     move(to: .result)
                 }
@@ -780,10 +1030,76 @@ final class SceneMeViewModel: ObservableObject {
     }
 
     private func token(using api: APIService) async throws -> String {
-        guard let token = session?.accessToken else {
+        guard let current = session else {
             throw SceneMeAPIError.unauthorized
         }
-        return token
+        if let expiration = Self.accessTokenExpiration(current.accessToken),
+           expiration.timeIntervalSinceNow > 120 {
+            return current.accessToken
+        }
+        guard let refreshToken = current.refreshToken, !refreshToken.isEmpty else {
+            // Legacy sessions remain usable until their signed access token
+            // expires, then require one fresh sign-in to obtain rotation.
+            if let expiration = Self.accessTokenExpiration(current.accessToken), expiration > Date() {
+                return current.accessToken
+            }
+            forceSignOut()
+            throw SceneMeAPIError.unauthorized
+        }
+
+        if let sessionRefreshTask {
+            let refreshed = try await sessionRefreshTask.value
+            return refreshed.accessToken
+        }
+
+        let task = Task<SceneMeSession, Error> {
+            let auth = try await api.refreshSession(refreshToken: refreshToken)
+            return SceneMeSession(
+                userId: auth.userId,
+                email: auth.email,
+                fullName: auth.fullName,
+                accessToken: auth.accessToken,
+                refreshToken: auth.refreshToken
+            )
+        }
+        sessionRefreshTask = task
+        defer { sessionRefreshTask = nil }
+
+        do {
+            let refreshed = try await task.value
+            guard refreshed.userId == current.userId else {
+                forceSignOut()
+                throw SceneMeAPIError.unauthorized
+            }
+            sessionStore.save(refreshed)
+            session = refreshed
+            return refreshed.accessToken
+        } catch let error as SceneMeAPIError {
+            if case .backendUnreachable = error {
+                // Keep the valid Keychain session during temporary connectivity
+                // loss; the next protected action/foreground refresh can retry.
+                throw error
+            }
+            forceSignOut()
+            throw SceneMeAPIError.unauthorized
+        } catch {
+            forceSignOut()
+            throw SceneMeAPIError.unauthorized
+        }
+    }
+
+    private static func accessTokenExpiration(_ token: String) -> Date? {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        payload.append(String(repeating: "=", count: (4 - payload.count % 4) % 4))
+        guard
+            let data = Data(base64Encoded: payload),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let expiry = object["exp"] as? TimeInterval
+        else { return nil }
+        return Date(timeIntervalSince1970: expiry)
     }
 
     private func downloadImage(_ url: URL) async throws -> UIImage? {
@@ -825,9 +1141,11 @@ final class SceneMeViewModel: ObservableObject {
             }
         }
 
-        if let api, let token = session?.accessToken {
+        if let api {
             Task {
-                try? await GenerationService(api: api).cancel(jobId: result.id, token: token)
+                if let token = try? await token(using: api) {
+                    try? await GenerationService(api: api).cancel(jobId: result.id, token: token)
+                }
             }
         }
 
@@ -867,34 +1185,67 @@ final class SceneMeViewModel: ObservableObject {
     }
 
     func saveToPhotoLibrary(_ image: UIImage) {
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-        notice = "Saved to your photo library."
+        Task {
+            guard await canAddToPhotoLibrary() else { return }
+
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }
+                notice = "Saved to your photo library."
+            } catch {
+                notice = "SceneMe couldn't save this image. Check Photos access and try again."
+            }
+        }
     }
 
     func saveVideoToPhotoLibrary(_ url: URL) {
         Task {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
+                let (downloadedURL, response) = try await URLSession.shared.download(from: url)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    throw URLError(.badServerResponse)
+                }
                 let temporaryURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent("sceneme-\(UUID().uuidString).mp4")
-                try data.write(to: temporaryURL)
+                try FileManager.default.moveItem(at: downloadedURL, to: temporaryURL)
+                defer { try? FileManager.default.removeItem(at: temporaryURL) }
 
                 let exportURL = try await SceneMeVideoWatermark.prepareForExport(
                     sourceURL: temporaryURL,
                     apply: !currentTier.removesWatermark
                 )
-
-                guard UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(exportURL.path) else {
-                    notice = "This video format can't be saved to your library."
-                    return
+                defer {
+                    if exportURL != temporaryURL {
+                        try? FileManager.default.removeItem(at: exportURL)
+                    }
                 }
 
-                UISaveVideoAtPathToSavedPhotosAlbum(exportURL.path, nil, nil, nil)
+                guard await canAddToPhotoLibrary() else { return }
+
+                try await PHPhotoLibrary.shared().performChanges {
+                    guard PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: exportURL) != nil else {
+                        return
+                    }
+                }
                 notice = "Video saved to your photo library."
             } catch {
-                notice = "Could not download the video. Please try again."
+                notice = "SceneMe couldn't save this video. Check Photos access and try again."
             }
         }
+    }
+
+    private func canAddToPhotoLibrary() async -> Bool {
+        let current = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        let status = current == .notDetermined
+            ? await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            : current
+
+        guard status == .authorized || status == .limited else {
+            notice = "Allow SceneMe to add photos in Settings to save this creation."
+            return false
+        }
+        return true
     }
 }
 

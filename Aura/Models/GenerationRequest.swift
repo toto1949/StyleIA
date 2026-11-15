@@ -150,6 +150,15 @@ enum CompanionKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ImageGenerationQuality: String, Codable, CaseIterable, Identifiable {
+    case standard
+    case premium
+
+    var id: String { rawValue }
+    var title: String { self == .standard ? "Standard" : "Premium" }
+    var detail: String { self == .standard ? "1 credit" : "2 credits · enhanced model" }
+}
+
 /// Everything needed to ask the backend for one scene generation.
 struct GenerationRequest: Equatable {
     let scene: SceneTemplate
@@ -161,6 +170,9 @@ struct GenerationRequest: Equatable {
     var companionKind: CompanionKind
     /// Gender of the friend photo (ignored for pets). Prevents male+male → male+female flips.
     var companionGender: SubjectGender
+    /// Explicit attestation required whenever another person's photo is sent.
+    var companionPhotoPermissionConfirmed: Bool
+    var imageQuality: ImageGenerationQuality
 
     init(scene: SceneTemplate) {
         self.scene = scene
@@ -171,6 +183,8 @@ struct GenerationRequest: Equatable {
         self.hasCompanion = false
         self.companionKind = .friend
         self.companionGender = .auto
+        self.companionPhotoPermissionConfirmed = false
+        self.imageQuality = .standard
     }
 
     /// Human readable summary shown in the "Your scene preview" footer.
@@ -192,6 +206,7 @@ struct GenerationRequest: Equatable {
                 parts.append("with a \(companionGender.title.lowercased()) friend")
             }
         }
+        parts.append("\(imageQuality.title.lowercased()) quality")
         return parts.joined(separator: ", ") + "…"
     }
 }

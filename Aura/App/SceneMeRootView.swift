@@ -40,6 +40,14 @@ struct SceneMeRootView: View {
         .task {
             // Start StoreKit listener after the run loop is ready to prevent
             // the OS_dispatch_mach_msg crash that occurs on early init.
+            #if targetEnvironment(simulator)
+            let processInfo = ProcessInfo.processInfo
+            if processInfo.arguments.contains("-ui-testing-authenticated")
+                || processInfo.environment["SCENEME_UI_TEST_AUTHENTICATED"] == "1"
+                || UserDefaults.standard.bool(forKey: "SCENEME_UI_TEST_AUTHENTICATED") {
+                return
+            }
+            #endif
             viewModel.subscriptionService.start()
         }
         .sheet(item: $viewModel.paywallTrigger) { trigger in
@@ -48,6 +56,12 @@ struct SceneMeRootView: View {
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
+        }
+        .sheet(
+            isPresented: $viewModel.isAIProcessingConsentPresented,
+            onDismiss: viewModel.cancelAIProcessingConsentRequest
+        ) {
+            AIProcessingConsentView(viewModel: viewModel)
         }
         .background(SceneMeTheme.ink.ignoresSafeArea())
         .preferredColorScheme(.dark)
@@ -67,6 +81,26 @@ struct SceneMeRootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await viewModel.refreshAccountAccess() }
+            }
+        }
+        .task {
+            await viewModel.refreshAccountAccess()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.refreshAccountAccess() }
+            }
+        }
+        // Keep signed media URLs fresh when the app becomes active and when
+        // returning to the Gallery. Existing scenePhase handlers are preserved.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.refreshHistoryFromServer() }
+            }
+        }
+        .onChange(of: viewModel.tab) { _, selectedTab in
+            if selectedTab == .gallery {
+                Task { await viewModel.refreshHistoryFromServer() }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sceneMeOpenReadyClip)) { notification in
@@ -169,6 +203,7 @@ private struct SceneMeTabBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SceneMePressButtonStyle())
+        .accessibilityIdentifier("tab.\(tab.rawValue)")
     }
 
     @ViewBuilder
@@ -181,10 +216,12 @@ private struct SceneMeTabBar: View {
                     centerLabel
                 }
                 .buttonStyle(SceneMePressButtonStyle())
+                .accessibilityIdentifier("tab.newScene")
             } else {
                 PhotosPicker(selection: $viewModel.photoItem, matching: .images) {
                     centerLabel
                 }
+                .accessibilityIdentifier("tab.newScene")
             }
         }
         .frame(maxWidth: .infinity)
@@ -471,9 +508,7 @@ private struct ProfileView: View {
 
                 subscriptionCard
 
-                #if DEBUG
-                debugTierCard
-                #endif
+                privacyControlsCard
 
                 passportCard
 
@@ -510,6 +545,13 @@ private struct ProfileView: View {
             isPresented: $confirmDeleteAccount,
             titleVisibility: .visible
         ) {
+            Button("Manage Apple Subscription") {
+                Task {
+                    if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
+                        await UIApplication.shared.open(url)
+                    }
+                }
+            }
             Button("Delete Account", role: .destructive) {
                 Task {
                     await viewModel.deleteAccount()
@@ -517,8 +559,47 @@ private struct ProfileView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Your account, uploaded photos and all generations will be permanently deleted from the server.")
+            Text("Your account, uploaded photos and generations will be permanently deleted. Any Apple subscription continues until you cancel it in Apple Subscriptions.")
         }
+    }
+
+    private var privacyControlsCard: some View {
+        Button {
+            viewModel.reviewAIProcessingConsent()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(SceneMeTheme.gold)
+                    .frame(width: 34, height: 34)
+                    .background(SceneMeTheme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("AI DATA SHARING")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(1.7)
+                        .foregroundStyle(SceneMeTheme.subtleText)
+                    Text(viewModel.hasAIProcessingConsent ? "Allowed — tap to review or withdraw" : "Not allowed — nothing is sent for AI processing")
+                        .font(.system(size: 12))
+                        .foregroundStyle(SceneMeTheme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(SceneMeTheme.faintText)
+            }
+            .padding(16)
+            .background(SceneMeTheme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
+                    .stroke(SceneMeTheme.hairline, lineWidth: 1)
+            }
+        }
+        .buttonStyle(SceneMePressButtonStyle())
     }
 
     private var subscriptionCard: some View {
@@ -538,8 +619,8 @@ private struct ProfileView: View {
                             .background(tier == .free ? SceneMeTheme.surface : SceneMeTheme.gold)
                             .clipShape(Capsule())
 
-                        if tier == .free, let left = remaining {
-                            Text("\(left) gen\(left == 1 ? "" : "s") left this month")
+                        if let left = remaining {
+                            Text("\(left) credit\(left == 1 ? "" : "s") available")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(left == 0 ? Color(red: 0.95, green: 0.45, blue: 0.42) : SceneMeTheme.subtleText)
                         }
@@ -610,67 +691,6 @@ private struct ProfileView: View {
                 .stroke(tier == .free ? SceneMeTheme.hairline : SceneMeTheme.gold.opacity(0.35), lineWidth: 1)
         }
     }
-
-    #if DEBUG
-    /// Debug-only tier simulator: force Free / Creator / Pro without StoreKit.
-    /// Not compiled into Release builds.
-    private var debugTierCard: some View {
-        let service = viewModel.subscriptionService
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("DEV · SIMULATE TIER")
-                    .font(.system(size: 10, weight: .heavy))
-                    .tracking(2)
-                    .foregroundStyle(SceneMeTheme.subtleText)
-
-                Spacer()
-
-                Image(systemName: "hammer.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(SceneMeTheme.subtleText)
-            }
-
-            HStack(spacing: 8) {
-                debugTierChip(title: "Live", isSelected: service.debugTierOverride == nil) {
-                    service.debugTierOverride = nil
-                }
-                ForEach([SubscriptionTier.free, .creator, .pro], id: \.rawValue) { tier in
-                    debugTierChip(title: tier.displayName, isSelected: service.debugTierOverride == tier) {
-                        service.debugTierOverride = tier
-                    }
-                }
-            }
-
-            Text("Overrides the subscription for testing. \"Live\" uses the real StoreKit entitlement. Debug builds only — never ships to the App Store.")
-                .font(.system(size: 10))
-                .foregroundStyle(SceneMeTheme.faintText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(16)
-        .background(SceneMeTheme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius, style: .continuous)
-                .stroke(SceneMeTheme.hairline, style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-        }
-    }
-
-    private func debugTierChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .bold))
-                .tracking(1)
-                .foregroundStyle(isSelected ? Color.black.opacity(0.88) : SceneMeTheme.subtleText)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
-                .background(isSelected ? SceneMeTheme.gold : SceneMeTheme.surface)
-                .clipShape(Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(SceneMePressButtonStyle())
-    }
-    #endif
 
     /// Scene Passport — a collectible record of every destination visited.
     private var passportCard: some View {
@@ -747,7 +767,9 @@ private struct ProfileView: View {
     private var accountActions: some View {
         VStack(spacing: 10) {
             Button {
-                Task { await viewModel.subscriptionService.restorePurchases() }
+                Task {
+                    viewModel.notice = await viewModel.subscriptionService.restorePurchases()
+                }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.clockwise")
@@ -791,11 +813,17 @@ private struct ProfileView: View {
             Button {
                 confirmDeleteAccount = true
             } label: {
-                Text("Delete account and all data")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.42).opacity(0.85))
+                HStack(spacing: 8) {
+                    if viewModel.isDeletingAccount {
+                        ProgressView().tint(Color(red: 0.95, green: 0.45, blue: 0.42))
+                    }
+                    Text(viewModel.isDeletingAccount ? "Deleting account…" : "Delete account and all data")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.42).opacity(0.85))
             }
             .buttonStyle(SceneMePressButtonStyle())
+            .disabled(viewModel.isDeletingAccount)
             .padding(.top, 2)
         }
     }
