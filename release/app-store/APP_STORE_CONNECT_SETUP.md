@@ -10,7 +10,7 @@ Live App Store Connect configuration was updated and verified on 2026-11-15. Thi
 | Bundle ID | `com.sceneme.app` | Source/archive/portal PASS |
 | SKU | Stable existing Connect value | Portal PASS; keep private/internal |
 | Platform/version | iOS/iPadOS 1.0 | Source/portal PASS |
-| Build | 2 for the current release candidate | Uploaded and Ready to Submit; version 1.0 still references build 1 |
+| Build | 2 for the current release candidate | Uploaded, Ready to Submit and saved on version 1.0; build 1 is no longer associated |
 | Apple team | `3K82B6HTAT`; matches every Xcode target | Archive and portal PASS |
 | Distribution certificate/profile | Apple Distribution / App Store managed profile | Archive/export PASS |
 | Numeric Apple app ID | `6822467260` / `APP_STORE_APPLE_ID` | Portal PASS |
