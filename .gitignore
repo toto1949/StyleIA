@@ -29,3 +29,7 @@ Backend/data/*.json
 Backend/data/*.tmp
 Backend/uploads/*
 !Backend/uploads/.gitkeep
+
+# Generated/superseded App Store screenshot intermediates
+release/app-store/screenshots/final/legacy-draft/
+release/app-store/screenshots/source/scene-art/

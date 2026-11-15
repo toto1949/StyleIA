@@ -1,0 +1,259 @@
+{
+  "status": "PASS",
+  "fileCount": 15,
+  "checks": {
+    "nativeDimensions": "PASS",
+    "rgbColorMode": "PASS",
+    "noAlphaChannel": "PASS",
+    "deviceMockupsFullyInsideCanvas": "PASS",
+    "minimumMarketingCopySizePixels": 25
+  },
+  "reviewNotes": [
+    "Every embedded screen is an automated capture of the running SceneMe app.",
+    "The iPad set uses captures from the native 13-inch iPad simulator layout.",
+    "No ratings, testimonials, awards, competitor marks, or unavailable features are claimed.",
+    "Subscription prices mirror SceneMe.storekit; UI tests verify $119.99 and SAVE 33% before capture."
+  ],
+  "files": [
+    {
+      "path": "final/iphone-large/01-place-yourself-anywhere.png",
+      "device": "Large iPhone",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "expectedDimensions": [
+        1320,
+        2868
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "b4c6ab82350e8b7cf33573a83ced58de47db432db135e7c2a1db5ad5a952bd0d",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-large/02-choose-a-scene.png",
+      "device": "Large iPhone",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "expectedDimensions": [
+        1320,
+        2868
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "650598324d410d18aefd8262cd56c107e29732213472107f785bc4ca7d60b78e",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-large/03-direct-every-detail.png",
+      "device": "Large iPhone",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "expectedDimensions": [
+        1320,
+        2868
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "c6a698a9f9e2d2c8d61c081c3354b6d0312119d2bdc0238039da5023447761e8",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-large/04-clear-credits.png",
+      "device": "Large iPhone",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "expectedDimensions": [
+        1320,
+        2868
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "5b830810647dce623de58921722fe56cec62c389085fe52b496dee4b35c2404a",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-large/05-one-photo-any-world.png",
+      "device": "Large iPhone",
+      "dimensions": [
+        1320,
+        2868
+      ],
+      "expectedDimensions": [
+        1320,
+        2868
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "8f6d7dd8430998ef248edfaf0d6f3552bcec63423eda29259887b0318f65af8b",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-medium/01-place-yourself-anywhere.png",
+      "device": "Medium Dynamic Island iPhone",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "expectedDimensions": [
+        1206,
+        2622
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "68aaf7491d3cd399fce6d13a3a1b8e8ac02177190e947d71c445aa0807493b43",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-medium/02-choose-a-scene.png",
+      "device": "Medium Dynamic Island iPhone",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "expectedDimensions": [
+        1206,
+        2622
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "bdd3a33eeecf5dac54aba2dbaca4564a2c8c10db1a80a0f14b65ea4195833853",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-medium/03-direct-every-detail.png",
+      "device": "Medium Dynamic Island iPhone",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "expectedDimensions": [
+        1206,
+        2622
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "d2e42f3431439cb1dc80720e88abeb28766d6637779e2c2372972c5fd666fa76",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-medium/04-clear-credits.png",
+      "device": "Medium Dynamic Island iPhone",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "expectedDimensions": [
+        1206,
+        2622
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "d370d5616e1a0211fb52fdcb7408c2f9292b3398ef55b744fd60e9f0ab67292b",
+      "status": "PASS"
+    },
+    {
+      "path": "final/iphone-medium/05-one-photo-any-world.png",
+      "device": "Medium Dynamic Island iPhone",
+      "dimensions": [
+        1206,
+        2622
+      ],
+      "expectedDimensions": [
+        1206,
+        2622
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "7d51473f7d32c7ed1281e46ef97e3133714530fee543559e635331ee3beb4e75",
+      "status": "PASS"
+    },
+    {
+      "path": "final/ipad-13/01-place-yourself-anywhere.png",
+      "device": "13-inch iPad",
+      "dimensions": [
+        2064,
+        2752
+      ],
+      "expectedDimensions": [
+        2064,
+        2752
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "e819a739becbc573dd7b9c651ad80f1b20328fb8cdc6c7cb03c36eb6bd48ed9a",
+      "status": "PASS"
+    },
+    {
+      "path": "final/ipad-13/02-choose-a-scene.png",
+      "device": "13-inch iPad",
+      "dimensions": [
+        2064,
+        2752
+      ],
+      "expectedDimensions": [
+        2064,
+        2752
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "7f74260a879a3e9ba5042ab6d25e1e62293b93a0261e0b37bd4d92dfd426be9b",
+      "status": "PASS"
+    },
+    {
+      "path": "final/ipad-13/03-direct-every-detail.png",
+      "device": "13-inch iPad",
+      "dimensions": [
+        2064,
+        2752
+      ],
+      "expectedDimensions": [
+        2064,
+        2752
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "f7ef049439a5b0aff600e2ed56e969eaa69895005e704308900bae49a942ed3a",
+      "status": "PASS"
+    },
+    {
+      "path": "final/ipad-13/04-clear-credits.png",
+      "device": "13-inch iPad",
+      "dimensions": [
+        2064,
+        2752
+      ],
+      "expectedDimensions": [
+        2064,
+        2752
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "bf8d9038d6e2ae4800be71e46414d476b691f415329222efc89bc171b50498dc",
+      "status": "PASS"
+    },
+    {
+      "path": "final/ipad-13/05-one-photo-any-world.png",
+      "device": "13-inch iPad",
+      "dimensions": [
+        2064,
+        2752
+      ],
+      "expectedDimensions": [
+        2064,
+        2752
+      ],
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "sha256": "b460cc8c6a39803c3a86b52362daa2d6b5234ffac90c414a41b69fc2893b013f",
+      "status": "PASS"
+    }
+  ]
+}
