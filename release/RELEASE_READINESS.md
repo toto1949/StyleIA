@@ -1,17 +1,17 @@
 # SceneMe 1.0 Release Readiness
 
 Assessment date: 2026-11-15
-Decision: **Build 1.0 (2) is ready for TestFlight upload. App Review submission remains BLOCKED on owner/Apple actions and required live testing.**
+Decision: **Build 1.0 (2) was uploaded successfully and is processing in App Store Connect. App Review submission remains BLOCKED on owner/Apple actions and required live testing.**
 
 Only PASS, BLOCKED and NOT TESTED are used below. PASS means the stated scope was actually verified; it does not imply broader production proof.
 
 | Item | Status | Verification method | Outstanding action |
 | --- | --- | --- | --- |
 | Phase 0 repository/API/journey audit | PASS | Source, project, workflow, local command and simulator inspection; `docs/RELEASE_AUDIT.md` | Re-audit final diff before RC. |
-| Dedicated release branch | PASS | Working branch `codex/release-1.0` | Split into reviewable commits/PRs after owner confirms inherited worktree changes. |
+| Dedicated release branch | PASS | `codex/release-1.0` was reconciled, committed, passed CI, reviewed through PR #18 and merged to `main` as `852d6854bc1111cc5d958c6398717c86c1a53a5e` | Preserve the release tag and exact archive hashes. |
 | Backend dependency audit | PASS | `npm audit --omit=dev`, 0 known findings | Repeat on immutable RC. |
 | Backend mock suite | PASS | Companion, subscription and API smoke tests passed | Not proof of paid providers. |
-| PostgreSQL schema/migration | PASS | Fresh disposable PostgreSQL applied 001/002/003; second run skipped all; 003 rollback, migration-record removal and reapply passed | Managed staging/production migration NOT TESTED. |
+| PostgreSQL schema/migration | PASS | Fresh disposable PostgreSQL applied 001–006; production 005/006 applied successfully; all 16 SceneMe tables have RLS enabled and `citext` resides in `extensions` | Rehearse rollback/restore against managed staging. |
 | Legacy JSON preservation | PASS | Dry-run/apply verified 24 users, 78 uploads, 139 jobs | Repeat from approved production backup at change window. |
 | PostgreSQL end-to-end smoke | PASS | Full backend suite on disposable PostgreSQL | Load/concurrency scale test remains. |
 | Private storage implementation | PASS | Private S3-compatible adapter, owner-scoped keys, fresh video-source signing and S3 compatibility tests passed | Live dashboard/lifecycle, real bucket isolation and provider retention remain BLOCKED. |
@@ -47,7 +47,7 @@ Only PASS, BLOCKED and NOT TESTED are used below. PASS means the stated scope wa
 | iOS unit tests | PASS | 14/14 rerun 2026-11-15 on iPhone 17 Pro iOS 26.5 simulator, Xcode 26.6, including StoreKit product/price contract, account-scoped/expiring reviewer access, and safety-report routing | Add live network/entitlement tests. |
 | iOS purchase-to-server synchronization | PASS | Verified transaction changes now invoke `/v1/subscriptions/sync`; Release compile succeeded | Signed Apple lifecycle remains NOT TESTED. |
 | iOS compile after server-usage changes | PASS | Full unit/UI test build, optimized simulator Release build, development-signed physical-device Release build and generic-device archive succeeded on 2026-11-15 | TestFlight install and live journeys remain. |
-| iOS Release configuration | PASS | Exported `SceneMe.ipa` is Apple Distribution-signed for Team `3K82B6HTAT`, bundle `com.sceneme.app`, version `1.0 (2)`, `get-task-allow=false`; StoreKit test configuration is absent and the privacy manifest is present | Upload/process in App Store Connect and retain Apple validation result. |
+| iOS Release configuration | PASS | Exported `SceneMe.ipa` is Apple Distribution-signed for Team `3K82B6HTAT`, bundle `com.sceneme.app`, version `1.0 (2)`, `get-task-allow=false`; StoreKit test configuration is absent and the privacy manifest is present. Upload succeeded at 2026-11-15 13:57 EST | Wait for App Store processing and inspect all warnings. |
 | Release test/debug cleanup | PASS | Removed the Profile tier simulator, persisted debug tier override and temporary real-device credit bypass. Source audit and compiled executable string scans found no owner allowance, test-tier, UI-test, screenshot-mode, mock-generation or fake-result markers in either the unsigned archive or signed physical-device Release app | Preserve simulator-only automation seams behind compile-time guards; repeat binary scan on the immutable App Store archive. |
 | Deterministic iOS UI smoke | PASS | 5/5 UI tests reran successfully on 2026-11-15, covering auth, largest Accessibility text, catalog/support, companion consent and screenshot/paywall contract | Live auth and end-to-end journeys remain. |
 | Critical iOS UI journeys | NOT TESTED | Deterministic auth/catalog/support/permission coverage exists; real onboarding/generation/purchase/export/deletion automation does not | Add backend-controlled journeys before RC. |
@@ -63,25 +63,24 @@ Only PASS, BLOCKED and NOT TESTED are used below. PASS means the stated scope wa
 | App icon source/build catalog | PASS | 1024px non-alpha light/dark/tinted assets visually inspected, Release-compiled, checksummed and exported under `release/app-store/icons/` | Owner approves visual; validate final archive/App Store processing. |
 | Screenshot/app preview assets | PASS | Fifteen polished current-build screenshots were revalidated 2026-11-15: five each at 1320×2868, 1206×2622 and 2064×2752; RGB, no alpha, native iPad layout, loaded prices, 33% Pro savings, clear UI and no fabricated results/reviews | Owner visual approval and App Store Connect upload; add result/video/export screens only after live-provider proof. |
 | Metadata/Connect worksheets | PASS | Drafts in `release/app-store/` | Owner edits/approves and enters in Connect. |
-| GitHub Actions baseline | PASS | Latest committed main run passed; enhanced workflow authored | New workflow run on this branch/PR NOT TESTED. |
+| GitHub Actions baseline | PASS | PR #18 run `43749525056` passed both Backend and iOS unit-test jobs against release commit `e329507` before merge | Update deprecated action runtimes in a follow-up; warning is not a release blocker. |
 | Managed backup/restore drill | BLOCKED | Local disposable migration/import only | Configure PITR and perform witnessed restore. |
 | Production monitoring/alerts | BLOCKED | No vendor/dashboard/threshold wiring | Implement before production traffic. |
-| Render production configuration | BLOCKED | Live dashboard confirms service `srv-d98llertqb8s7399g35g`, commit `cb2dfc8`, free plan, one instance, auto-deploy off, `/health`, 35 keys and no environment group. Production/mock/App Store/budget safety values were verified and re-masked; recovery logs confirm the backend is listening | Verify Supabase backups/storage lifecycle, sustained metrics and external alerts. |
+| Render production configuration | BLOCKED | Service `srv-d98llertqb8s7399g35g` deployed merge commit `852d6854bc1111cc5d958c6398717c86c1a53a5e` successfully on 2026-11-15. Auto-deploy remains off; `/health` is configured. Production mock/App Store/budget safety values were verified without exporting secrets | Free compute remains cold-start prone; verify Supabase backups/storage lifecycle, sustained metrics and external alerts. |
 | Existing production service | BLOCKED | SceneMe Supabase was resumed from `INACTIVE` to `ACTIVE_HEALTHY`; Render recovered and `/health`, privacy, terms, support and catalog return HTTP 200. One user, nine uploads, eleven jobs, eighteen private objects and four migration records survived. Both platforms remain on inactivity/cold-start-prone free operation | Owner approves the current approximate $32/month base for Supabase Pro + 512 MB Render compute, then verify sustained availability, signed media/auth/deletion and cold/warm latency before TestFlight. |
-| Deployment of current release changes | BLOCKED | Production migrations 005/006 were applied and verified without a service outage. Current iOS/backend source changes are not deployed; no plan purchase occurred | Commit the exact source, deploy through the documented migration path, and verify the deployed SHA before TestFlight live tests. |
+| Deployment of current release changes | PASS | Production migrations 005/006 were applied, PR #18 merged, and Render deploy `dep-dbt04gdg1s2s738co5sg` reached `live` for SHA `852d6854bc1111cc5d958c6398717c86c1a53a5e`. `/health`, `/support`, `/terms`, `/privacy` and `/v1/scenes` returned 200; unsigned Notifications V2 input returned the expected structured 400 | Run authenticated/private-media and paid-provider TestFlight checks; no plan purchase occurred. |
 | App Store Connect app record | BLOCKED | SceneMe AI Photo Studio 1.0 exists under Zevynta Labs LLC; bundle/team/SKU/Apple ID are correct. App price/availability, category, App Privacy, review credentials/contact/notes and notification URLs are incomplete; automatic release is selected | Complete the forms, review rights/rating/DSA answers and switch to manual release with owner approval. |
 | Apple agreements/paid commerce | BLOCKED | Free Apps Agreement is active effective 2026-11-15. App Store Connect still shows Paid Apps Agreement as “New — View and Agree to Terms.” | Account Holder accepts the Paid Apps Agreement and completes tax/banking. The agent will not accept legal/financial terms. |
-| Signing/archive validation | PASS | Build 2 was archived/exported with Xcode 26.6 and Apple Distribution. Entitlements are `3K82B6HTAT.com.sceneme.app`, Sign in with Apple, beta reports enabled and `get-task-allow=false`; binary scan found no release-test bypass markers. | Upload and confirm Apple processing/validation for this exact IPA. |
-| TestFlight upload/test | BLOCKED | Build 1 is Ready to Submit but has zero assigned groups/testers, installs and completed test results; What to Test is blank | Upload the new RC, assign internal testers and complete physical-device sign-off. |
+| Signing/archive validation | PASS | Build 2 was archived/exported with Xcode 26.6 and Apple Distribution. Entitlements are `3K82B6HTAT.com.sceneme.app`, Sign in with Apple, beta reports enabled and `get-task-allow=false`; binary scan found no release-test bypass markers. SHA-256 is recorded in the release evidence. | Confirm Apple processing/validation for this exact IPA. |
+| TestFlight upload/test | BLOCKED | Build 2 upload succeeded and App Store Connect shows version 1.0 (2) Processing. Build 1 remains Ready to Submit but predates current fixes | Wait for build 2 to become available, attach it to the internal group and complete physical-device sign-off. |
 | App Store submission/public release | BLOCKED | Owner-controlled by requirement | Exact-build final approval and owner-initiated submission/release. |
 
 ## Minimum path to an RC
 
-1. Move the recovered Supabase database and Render API to owner-approved always-on plans; verify safety flags, RLS/private-schema hardening, backup, alerts and latency.
-2. Reconcile the release source into a clean commit, run enhanced CI, increment the build and validate the exact archive.
-3. Account Holder completes Apple agreements/paid-app setup; finish App Privacy, price/availability, category, rights/rating/DSA and review information.
-4. Correct subscription configuration without changing product IDs, configure Notifications V2, and run signed JWS/StoreKit/Sandbox lifecycle tests.
-5. Validate paid provider paths, cost/refund behavior and safety controls, then obtain financial and legal approval.
-6. Upload the owner-approved RC to TestFlight and complete real-device, accessibility, offline, performance and screenshot sign-off.
+1. Wait for build 2 processing, then attach it to the internal TestFlight group and version 1.0; never use build 1 for submission.
+2. Account Holder completes the Paid Apps Agreement/tax/banking; finish App Privacy, free app availability, category, rights/rating/DSA and review information.
+3. Correct subscription configuration without changing product IDs, configure Notifications V2, and run signed JWS/StoreKit/Sandbox lifecycle tests.
+4. Validate paid provider paths, cost/refund behavior and safety controls, then obtain financial and legal approval.
+5. Complete real-device, accessibility, offline, performance and screenshot sign-off; upgrade cold-start-prone production services before traffic.
 
 The owner retains final control over infrastructure spending, commercial changes, legal agreements, build upload, submission and public launch.
