@@ -8,7 +8,7 @@ Date: 2026-11-15 (America/New_York). App Review submission: BLOCKED.
 | Full iOS unit/UI suite | PASS | 19 passed (14 unit + 5 UI), 0 failed, 1 explicitly skipped local StoreKit lifecycle test on iOS 26.5. The separate attempted lifecycle run failed as recorded below. CI now includes four deterministic UI smoke scenarios. |
 | Local StoreKit lifecycle | BLOCKED | Two attempted runs returned zero products; the stable iOS 26.5 run also threw `StoreKitError.notEntitled`. Purchase, renewal, refund and expiry assertions did not pass. Preserve this failure until a working local StoreKit host or Sandbox validates the flows. |
 | Missing-price feedback/retry | PASS | Client compiles with explicit loading, error and retry state; live-device behavior pending. |
-| Apple Sandbox/TestFlight purchase, restore, pending, upgrades/downgrades, billing retry/grace and notifications | BLOCKED | Paid Apps Agreement remains pending in last live inspection. Run after activation; local tests cannot establish these results. |
+| Apple Sandbox/TestFlight purchase, restore, pending, upgrades/downgrades, billing retry/grace and notifications | NOT TESTED | Agreement, banking and W-9 are now Active. Device product loading succeeded; no purchase lifecycle result is established. |
 | Face identity across quality choices | BLOCKED | Standard and Premium completed in Render logs, but owner reports identity loss. Need consented original/result pairs and controlled visual comparison. Economy mode was off, ruling out the fixed economy/Premium parameter bug for those requests. |
 | Physical-device offline, background/resume, export, accessibility and deletion | NOT TESTED | Repeat on build 3 and record outcomes. Simulator tests do not replace this matrix. |
 | Archive and distribution export | PASS | `/tmp/SceneMe-1.0-build3.xcarchive`, `/tmp/SceneMeExport-build3/SceneMe.ipa`; version 1.0 build 3, team 3K82B6HTAT, bundle com.sceneme.app, get-task-allow=false. Privacy manifests present; no .storekit file in IPA. |
@@ -34,3 +34,11 @@ No financial approval, production subscription activation or App Review submissi
 - An earlier method-filter invocation selected zero tests and is not counted as verification. The subsequent suite invocation above actually executed the clean test.
 - Diagnostic tests remain opt-in, now serialized. No purchase was attempted in the clean product test. The paired physical phone was unavailable, and the owner requested continuing with simulator checks.
 - Root cause remains unresolved. Local StoreKit is independent of the activated agreement, so this failure cannot establish the cause of the continuing TestFlight failure. Next evidence needed: device StoreKit logs from build 3 or a confirmed Sandbox product-loading run.
+
+## Real device follow-up — 2026-11-16
+
+- Connected iPhone 17 Pro Max confirmed SceneMe 1.0 build 3 installed.
+- Console device stream filtered to subsystem `com.sceneme.app`, with informational messages enabled.
+- After terminating/relaunching SceneMe, Console showed at 11:17:01 -0500: `Product fetch returned 4 products; missing 0`.
+- Product loading on the physical device: PASS for this request. All four configured products were returned by Apple. No purchase was initiated. Paywall visual confirmation is pending owner response.
+- A relaunch preceded success; we cannot distinguish cache refresh from Apple propagation from this evidence alone. The separate local simulator StoreKit failure remains unresolved.
