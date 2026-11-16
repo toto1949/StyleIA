@@ -51,7 +51,7 @@ final class SubscriptionService: ObservableObject {
 
     private var transactionListenerTask: Task<Void, Never>?
 
-    private init() {
+    init() {
         // Tasks are deferred to start() — starting StoreKit listeners in init()
         // before the run loop is ready causes an OS_dispatch_mach_msg crash.
     }

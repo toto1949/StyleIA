@@ -1,6 +1,7 @@
 # SceneMe 1.0 Release Readiness
 
 Assessment date: 2026-11-15
+Build 3 follow-up: archived, distribution-exported and uploaded for Apple processing at 20:14 EST. Backend suite passed; iOS full suite reported 19 passed and 1 skipped. The separate local StoreKit lifecycle attempt failed (zero products / notEntitled), so purchases remain BLOCKED. See `release/BUILD_3_TEST_REPORT.md`. App Store version still references build 2; no review submission occurred.
 Latest device feedback: **BLOCKED** — owner reports unloaded StoreKit prices in TestFlight/local installs and face identity changes when switching generation quality. Build 2 must not be submitted until these are resolved and retested. Local follow-up changes add price-loading feedback/retry and fix Premium requests incorrectly inheriting economy-model parameters; these changes are not in build 2. Face fidelity and real StoreKit availability remain unverified.
 Decision: **Build 1.0 (2) finished App Store processing and is assigned to the internal TestFlight group. App Review submission remains BLOCKED on the exact-build device/Sandbox/provider tests, review credentials, paid-commerce agreement and owner-controlled submission.**
 
