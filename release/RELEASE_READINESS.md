@@ -1,6 +1,7 @@
 # SceneMe 1.0 Release Readiness
 
 Assessment date: 2026-11-15
+Latest device feedback: **BLOCKED** — owner reports unloaded StoreKit prices in TestFlight/local installs and face identity changes when switching generation quality. Build 2 must not be submitted until these are resolved and retested. Local follow-up changes add price-loading feedback/retry and fix Premium requests incorrectly inheriting economy-model parameters; these changes are not in build 2. Face fidelity and real StoreKit availability remain unverified.
 Decision: **Build 1.0 (2) finished App Store processing and is assigned to the internal TestFlight group. App Review submission remains BLOCKED on the exact-build device/Sandbox/provider tests, review credentials, paid-commerce agreement and owner-controlled submission.**
 
 Only PASS, BLOCKED and NOT TESTED are used below. PASS means the stated scope was actually verified; it does not imply broader production proof.

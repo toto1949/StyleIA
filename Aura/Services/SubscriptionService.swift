@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import StoreKit
+import OSLog
 
 /// StoreKit 2 subscription manager. Owns all purchase, restore and entitlement
 /// logic so the rest of the app only needs to read `tier` and `products`.
@@ -15,6 +16,9 @@ final class SubscriptionService: ObservableObject {
     @Published private(set) var complimentaryReviewTier: SubscriptionTier = .free
     private var complimentaryReviewExpiresAt: Date?
     @Published private(set) var products: [Product] = []
+    @Published private(set) var isLoadingProducts = false
+    @Published private(set) var productLoadError: String?
+    private let storeLogger = Logger(subsystem: "com.sceneme.app", category: "StoreKit")
     @Published private(set) var isPurchasing = false
     @Published private(set) var isRestoring = false
     /// Transaction proof sent to SceneMe's backend for Apple verification.
@@ -102,6 +106,10 @@ final class SubscriptionService: ObservableObject {
     // MARK: - Products
 
     func loadProducts() async {
+        guard !isLoadingProducts else { return }
+        isLoadingProducts = true
+        productLoadError = nil
+        defer { isLoadingProducts = false }
         do {
             let fetched = try await Product.products(for: SceneMeProductID.allCases.map(\.rawValue))
             // Sort: pro before creator, monthly before yearly within each tier.
@@ -113,11 +121,15 @@ final class SubscriptionService: ObservableObject {
                 if lhsTier != rhsTier { return lhsTier > rhsTier }
                 return !(lhsID?.isYearly ?? false) && (rhsID?.isYearly ?? true)
             }
+            let missingCount = SceneMeProductID.allCases.count - products.count
+            storeLogger.info("Product fetch returned \(fetched.count) products; missing \(missingCount)")
+            if missingCount > 0 {
+                productLoadError = "Some subscription prices are unavailable from the App Store. Please try again shortly."
+            }
         } catch {
-            // Products stay empty; paywall shows a loading state and retries.
-            #if DEBUG
-            print("[SubscriptionService] Product fetch failed: \(error)")
-            #endif
+            productLoadError = "Unable to load subscription prices. Check your connection and try again."
+            let nsError = error as NSError
+            storeLogger.error("Product fetch failed: domain=\(nsError.domain, privacy: .public) code=\(nsError.code)")
         }
     }
 

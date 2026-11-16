@@ -53,6 +53,25 @@ struct PaywallView: View {
                             .padding(.top, 22)
                             .padding(.horizontal, 22)
 
+                        if service.isLoadingProducts {
+                            ProgressView("Loading App Store prices…")
+                                .tint(SceneMeTheme.gold)
+                                .padding(.top, 16)
+                        } else if let error = service.productLoadError {
+                            VStack(spacing: 10) {
+                                Text(error)
+                                    .font(.footnote)
+                                    .multilineTextAlignment(.center)
+                                Button("Retry loading prices") {
+                                    Task { await service.loadProducts() }
+                                }
+                                .foregroundStyle(SceneMeTheme.gold)
+                            }
+                            .foregroundStyle(SceneMeTheme.text)
+                            .padding(.horizontal, 28)
+                            .padding(.top, 16)
+                        }
+
                         selectedBenefits
                             .padding(.top, 28)
                             .padding(.horizontal, 28)
@@ -85,7 +104,7 @@ struct PaywallView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            if service.products.isEmpty {
+            if service.products.count < SceneMeProductID.allCases.count {
                 await service.loadProducts()
             }
         }

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+
+const ecoRegression = process.argv.includes("--eco-regression");
+process.env.STYLEAI_ECO_MODE = String(ecoRegression);
 
 process.env.FAL_KEY = "test-fal-key";
 process.env.STYLEAI_PROVIDER_TIMEOUT_MS = "40";
@@ -67,8 +71,10 @@ assert.equal(sceneStates.length, 1);
 assert.equal(sceneStates[0].requestId, "scene-request-1");
 assert.equal(sceneStates[0].phase, "scene");
 const sceneSubmit = calls.find((call) => call.operation === "submit");
-assert.equal(sceneSubmit.input.num_inference_steps, undefined);
-assert.equal(sceneSubmit.input.safety_tolerance, "2");
+if (!ecoRegression) {
+  assert.equal(sceneSubmit.input.num_inference_steps, undefined);
+  assert.equal(sceneSubmit.input.safety_tolerance, "2");
+}
 
 submitted = ["premium-scene-request"];
 results = new Map([
@@ -85,6 +91,15 @@ const premiumSubmit = calls.find((call) =>
   call.operation === "submit" && call.input?.prompt === "A premium cinematic portrait"
 );
 assert.equal(premiumSubmit.model, "fal-ai/flux-pro/kontext/max");
+assert.equal(premiumSubmit.input.image_url, "https://private.example/input.jpg");
+assert.equal(premiumSubmit.input.enhance_prompt, false);
+assert.equal(premiumSubmit.input.aspect_ratio, "9:16");
+assert.equal(premiumSubmit.input.resolution_mode, undefined);
+assert.equal(premiumSubmit.input.num_inference_steps, undefined);
+
+// Eco mode must never send dev-only settings to the premium Max model.
+if (ecoRegression) process.exit(0);
+execFileSync(process.execPath, [process.argv[1], "--eco-regression"], { stdio: "pipe" });
 
 const submitsBeforeResume = calls.filter((call) => call.operation === "submit").length;
 results.set("scene-request-resume", { data: { images: [{ url: "https://fal.media/resumed.jpg" }] } });

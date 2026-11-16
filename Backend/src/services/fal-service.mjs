@@ -561,8 +561,8 @@ async function runFalRequest({
   paramMode = "full"
 }) {
   const isMulti = Boolean(companionImageURL);
-  const isEco = !isMulti && config.ecoMode;
   const isPremium = imageQuality === "premium";
+  const isEco = !isPremium && !isMulti && config.ecoMode;
   const model = isPremium
     ? (isMulti ? config.falPremiumMultiModel : config.falPremiumModel)
     : (isMulti ? config.falMultiModel : imageModel());
