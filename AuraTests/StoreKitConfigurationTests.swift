@@ -4,7 +4,21 @@ import StoreKit
 import StoreKitTest
 @testable import Aura
 
+@Suite(.serialized)
 struct StoreKitConfigurationTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SCENEME_RUN_STOREKIT_TESTS"] == "1")) @MainActor
+    func localProductsWithoutFailureSimulation() async throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("SceneMe.storekit")
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        defer { session.resetToDefaultState() }
+        try await session.setSimulatedError(nil, forAPI: .loadProducts)
+        let products = try await Product.products(for: SceneMeProductID.allCases.map(\.rawValue))
+        #expect(Set(products.map(\.id)) == Set(SceneMeProductID.allCases.map(\.rawValue)))
+    }
+
     // Opt in on a host with a working StoreKit test service. A failed local
     // purchase run is a release blocker, not proof of Sandbox compatibility.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["SCENEME_RUN_STOREKIT_TESTS"] == "1")) @MainActor

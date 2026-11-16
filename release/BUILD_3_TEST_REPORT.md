@@ -23,3 +23,14 @@ The Debug launch scheme now references `SceneMe.storekit`. This simulates local 
 The local lifecycle test is explicitly opt-in because it requires a functioning StoreKit testing host. Add `SCENEME_RUN_STOREKIT_TESTS=1` to the test process environment in Xcode, then run `StoreKitConfigurationTests.localPurchaseRenewalRefundAndExpiry`. Its exclusion from ordinary unit CI must not be interpreted as purchase-test success. The scenario covers unavailable-price feedback, retry, account binding, renewal, expiration, refund, cancellation and the app purchase path. A failure aborts later scenarios; do not count them as passed.
 
 No financial approval, production subscription activation or App Review submission has occurred.
+
+## Follow-up: product loading after financial activation
+
+- Live Business page verified Paid Apps Agreement, bank account and U.S. W-9 as Active.
+- Developer portal verified explicit `com.sceneme.app` under team `3K82B6HTAT`, with In-App Purchase checked/enabled.
+- Live pages for all four products show all territories selected; Creator Monthly also shows current prices. Existing product IDs/localizations remain present.
+- A new isolated local test reset StoreKit state, explicitly cleared simulated product-loading errors, and requested all four product IDs directly using `Product.products(for:)`. It failed with an empty array on iOS 26.5. The configuration-contract test passed; the purchase lifecycle test was skipped in this diagnostic run.
+- Evidence: `/Users/Apple/Library/Developer/Xcode/DerivedData/Aura-ghwwhrzltipobcfftjygtbctquvd/Logs/Test/Test-Aura-2026.11.15_23-32-41--0500.xcresult`.
+- An earlier method-filter invocation selected zero tests and is not counted as verification. The subsequent suite invocation above actually executed the clean test.
+- Diagnostic tests remain opt-in, now serialized. No purchase was attempted in the clean product test. The paired physical phone was unavailable, and the owner requested continuing with simulator checks.
+- Root cause remains unresolved. Local StoreKit is independent of the activated agreement, so this failure cannot establish the cause of the continuing TestFlight failure. Next evidence needed: device StoreKit logs from build 3 or a confirmed Sandbox product-loading run.
