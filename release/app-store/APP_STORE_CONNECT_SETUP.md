@@ -10,7 +10,7 @@ Live App Store Connect configuration was updated and verified on 2026-11-15. Thi
 | Bundle ID | `com.sceneme.app` | Source/archive/portal PASS |
 | SKU | Stable existing Connect value | Portal PASS; keep private/internal |
 | Platform/version | iOS/iPadOS 1.0 | Source/portal PASS |
-| Build | 2 for the current release candidate | Uploaded, Ready to Submit and saved on version 1.0; build 1 is no longer associated |
+| Build | 3 is the latest uploaded candidate | Build 3 was uploaded and tested for product loading on the owner's iPhone; App Store version 1.0 was last verified with build 2 selected. Recheck processing and select the exact signed-off build before review. Build 1 must not be submitted. |
 | Apple team | `3K82B6HTAT`; matches every Xcode target | Archive and portal PASS |
 | Distribution certificate/profile | Apple Distribution / App Store managed profile | Archive/export PASS |
 | Numeric Apple app ID | `6822467260` / `APP_STORE_APPLE_ID` | Portal PASS |
@@ -82,5 +82,6 @@ SceneMe uses standard Apple networking/security and cryptography for HTTPS, Keyc
 2. Wait for processing; resolve all compliance/privacy warnings.
 3. Add internal testers, then external testing details if used.
 4. Complete beta review information and a working review/demo account.
+   Apple's current guidance asks subscription apps to provide a demo account with an expired subscription so reviewers can exercise the purchase flow. Provide that separately from SceneMe's finite complimentary reviewer account, and explain both paths in review notes.
 5. Run the exact checklist in `docs/QA_CHECKLIST.md`.
 6. Select one immutable build for version 1.0. The owner chooses manual, automatic or phased release and initiates submission.

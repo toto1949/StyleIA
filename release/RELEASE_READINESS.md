@@ -1,16 +1,10 @@
 # SceneMe 1.0 Release Readiness
 
-Assessment date: 2026-11-16
-Sign in with Apple device result: **PASS for one live iPhone sign-in, owner observed** after deploying key `DUK92YGRRL`. Direct Apple credential challenge and Render health passed independently. The Render log query did not expose a success record; returning/HME/deletion scenarios remain NOT TESTED. This resolves the original failed login but is not overall release sign-off.
-Apple credential deployment: replacement key `DUK92YGRRL` is now configured in Render with its matching private key. Deploy `dep-dbtt0ch42hec73au3t5g` is live; health returns 200. Apple token endpoint returned the expected `invalid_grant` for a deliberately invalid code, verifying client credentials. **Real-device Apple login remains NOT TESTED after this change.**
-Owner-download update: Apple key `DUK92YGRRL` is registered for SceneMe and awaiting its one-time owner download. The unusable first replacement `BZ63PVGWJ9` was revoked with owner approval. Render configuration and live Apple sign-in remain BLOCKED until the matching `.p8` is stored securely, deployed with its key ID, and verified on device.
-2026-11-17 follow-up: **BLOCKED** — owner-approved replacement Sign in with Apple key `BZ63PVGWJ9` was registered for SceneMe, but its one-time downloaded `.p8` file is not yet locatable in accessible local folders. Render still uses the mismatched old key ID. Reviewer account remains active with 12 uploads and 17 jobs; owner chose to preserve its login and clear test media/history, but that cleanup has not been performed. Full local backend suite passed; live `/health` returned HTTP 200 after 32.6 seconds (cold start). This is not a release sign-off.
-Apple credential follow-up: **BLOCKED** — authenticated dashboard inspection found Render `APPLE_KEY_ID=J72PKMJU9W` versus Apple Developer's current SceneMe Sign In key `543SL2NUZZ`. Team and client IDs match. Matching private-key material has not been located; no production configuration changes were made. Correct the credential pair and retest a real login before submission.
-Apple sign-in update: **BLOCKED** — Render recorded two `/v1/auth/apple` failures at Apple's authorization-code exchange (HTTP 400). Identity-token verification precedes this failure. Exact OAuth cause remains unknown because deployed logging omits it. Local safe-error diagnostics and mocked cryptographic tests pass but are not deployed. See `docs/APPLE_SIGN_IN_DIAGNOSIS_2026-11-16.md`.
-Device update: SceneMe 1.0 (3) on the connected iPhone 17 Pro Max logged `Product fetch returned 4 products; missing 0` after relaunch at 11:17:01 EST. Physical-device product loading is PASS for this request; paywall visual confirmation and purchase lifecycle remain open. Paid Apps Agreement, banking and W-9 are Active. The earlier simulator failure is separate and unresolved.
-Build 3 follow-up: archived, distribution-exported and uploaded for Apple processing at 20:14 EST. Backend suite passed; iOS full suite reported 19 passed and 1 skipped. The separate local StoreKit lifecycle attempt failed (zero products / notEntitled), so purchases remain BLOCKED. See `release/BUILD_3_TEST_REPORT.md`. App Store version still references build 2; no review submission occurred.
-Latest device feedback: **BLOCKED** — the missing-product request now succeeds on build 3 after relaunch; face identity changes when switching generation quality remain unresolved. Build 2 predates the loading feedback/retry fixes and must not be submitted. Paywall appearance and purchase lifecycle remain unverified.
-Decision: **Build 1.0 (3) is installed on the connected device and returned all four products. App Review submission remains BLOCKED on device/Sandbox/provider tests, face fidelity, review credentials and owner-controlled submission.**
+Assessment date: 2026-11-16 (client time)
+
+**Current decision: BLOCKED for App Review submission.** SceneMe 1.0 (3) loaded all four subscription products on the owner's iPhone, and one live Sign in with Apple attempt succeeded after the matching key was deployed to Render. The full local backend suite passed. Purchases, restore, refund, renewal, face fidelity, reviewer account cleanup, exact-build TestFlight journeys, and release infrastructure remain unverified or blocked. Build 3 is uploaded; the saved App Store version was last verified with build 2, so the selected build needs a fresh Connect check.
+
+Apple sign-in evidence: replacement key `DUK92YGRRL` was deployed with its private key in Render deploy `dep-dbtt0ch42hec73au3t5g` (live); `/health` returned 200 and Apple's token endpoint accepted the signing credentials. The owner then reported successful real-device sign-in. Returning sign-in, Hide My Email, and deletion/revocation remain untested. The original HTTP 400 failure is resolved for this attempt. See `docs/APPLE_SIGN_IN_DIAGNOSIS_2026-11-16.md`.
 
 Only PASS, BLOCKED and NOT TESTED are used below. PASS means the stated scope was actually verified; it does not imply broader production proof.
 
@@ -86,8 +80,8 @@ Only PASS, BLOCKED and NOT TESTED are used below. PASS means the stated scope wa
 
 ## Minimum path to an RC
 
-1. Install build 2 from the internal TestFlight group and run the exact-build device matrix; never submit build 1.
-2. Owner supplies the dedicated review password/phone; finish rights/rating/DSA and review information. Paid Apps Agreement, banking and tax activation are verified.
+1. Select uploaded build 3 in App Store Connect after processing, install that exact TestFlight build, and run the device matrix; never submit build 1 or the previously saved build 2 without reconciling the version.
+2. Clean and reverify the dedicated review account, then enter working review credentials, contact phone and accurate review notes; finish rights/rating/DSA answers. Paid Apps Agreement, banking and tax activation are verified.
 3. Attach the first subscription group only after the financial/TestFlight gate, and run signed JWS/StoreKit/Sandbox lifecycle tests.
 4. Validate paid provider paths, cost/refund behavior and safety controls, then obtain financial and legal approval.
 5. Complete real-device, accessibility, offline, performance and screenshot sign-off; upgrade cold-start-prone production services before traffic.
