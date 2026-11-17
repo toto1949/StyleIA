@@ -76,6 +76,38 @@ if (!ecoRegression) {
   assert.equal(sceneSubmit.input.safety_tolerance, "2");
 }
 
+// Repeated provider status events must not fan out into overlapping database
+// writes. A failed progress write is noncritical and must not crash the job.
+submitted = ["progress-flood-request"];
+results = new Map([
+  ["progress-flood-request", { data: { images: [{ url: "https://fal.media/progress.jpg" }] } }]
+]);
+let queueProgressCalls = 0;
+statusBehavior = async (_model, options) => {
+  for (let index = 0; index < 25; index += 1) {
+    options.onQueueUpdate?.({ status: "IN_PROGRESS", logs: [] });
+  }
+  return { status: "COMPLETED", logs: [] };
+};
+const progressURL = await generateScene({
+  originalPhotoURL: "https://private.example/input.jpg",
+  prompt: "A safe progress test",
+  jobId: "99999999-9999-4999-8999-999999999999",
+  onProviderState: async () => {},
+  onProgress: async (percent) => {
+    if (percent === 60) {
+      queueProgressCalls += 1;
+      throw new Error("database temporarily unavailable");
+    }
+  }
+});
+assert.equal(progressURL, "https://fal.media/progress.jpg");
+assert.equal(queueProgressCalls, 1);
+statusBehavior = async (_model, options) => {
+  options.onQueueUpdate?.({ status: "IN_PROGRESS", logs: [] });
+  return { status: "COMPLETED", logs: [] };
+};
+
 submitted = ["premium-scene-request"];
 results = new Map([
   ["premium-scene-request", { data: { images: [{ url: "https://fal.media/premium-scene.jpg" }] } }]
