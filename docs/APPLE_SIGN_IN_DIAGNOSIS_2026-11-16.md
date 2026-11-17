@@ -28,6 +28,8 @@ After explicit owner confirmation, unusable key `BZ63PVGWJ9` was revoked. Apple 
 
 Owner downloaded `AuthKey_DUK92YGRRL.p8` to Downloads. Local OpenSSL parsing passed and file permissions were restricted to `0600`. Render environment variables `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY` were updated together via the Render connector without printing key material; merge mode preserved unrelated variables. Deployment `dep-dbtt0ch42hec73au3t5g` reached `live`, and `/health` returned HTTP 200 in 0.696 s. A direct Apple `/auth/token` request with a correctly signed client secret and deliberately invalid authorization code returned `400 invalid_grant`, which establishes Apple accepted the signing credentials and rejected the test code. No user token or session was created by that check. Real iPhone Sign in with Apple remains to be verified.
 
+The owner subsequently reported a **successful Sign in with Apple on the iPhone** against the live deployment. This establishes the immediate sign-in failure is resolved for that attempt. The Render log query did not surface a matching successful request, so this is owner-observed device evidence rather than independently recorded server-response evidence. Returning sign-in, Hide My Email, cancellation, deletion/revocation, and other account scenarios remain untested.
+
 ## Verified production evidence
 
 Render service `srv-d98llertqb8s7399g35g` recorded `Apple authorization-code exchange failed (400).` for POST `/v1/auth/apple`:
