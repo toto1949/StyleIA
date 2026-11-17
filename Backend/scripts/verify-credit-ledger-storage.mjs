@@ -3,6 +3,7 @@ import { store } from "../src/services/store-instance.mjs";
 import {
   consumeCreditsInStore,
   creditStatusInStore,
+  recordVerifiedTransactionInStore,
   refundCreditsInStore
 } from "../src/services/app-store-service.mjs";
 
@@ -58,10 +59,40 @@ try {
   if (!job || job.creditCost !== 2 || !job.creditRefunded) {
     throw new Error("Per-job credit fields did not round-trip.");
   }
-  console.log("Durable credit account, grant, debit, refund and job fields round-trip passed.");
+
+  const purchasedAt = Date.now() - 60_000;
+  const verifiedAt = new Date().toISOString();
+  const transaction = {
+    transactionId: "9000000000000002",
+    originalTransactionId: "9000000000000002",
+    appAccountToken: userId,
+    productId: "com.sceneme.pro.yearly",
+    environment: "Sandbox",
+    purchaseDate: purchasedAt,
+    expiresDate: purchasedAt + 365 * 24 * 60 * 60 * 1_000
+  };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await store.mutate((data) => recordVerifiedTransactionInStore(data, {
+      transaction,
+      signedTransaction: "verified-jws-storage-fixture",
+      userId,
+      status: "active",
+      verifiedAt
+    }));
+  }
+  const purchased = await store.snapshot();
+  const paidAccount = purchased.creditAccounts.find((entry) => entry.userId === userId);
+  const paidGrants = purchased.creditGrants.filter((entry) => entry.userId === userId && entry.sourceType === "subscription");
+  const entitlement = purchased.entitlements.find((entry) => entry.userId === userId);
+  if (paidAccount?.balance !== 103 || paidGrants.length !== 1 || entitlement?.tier !== "pro") {
+    throw new Error("Verified purchase did not atomically grant one durable monthly allowance.");
+  }
+  console.log("Durable credit ledger and immediate verified-purchase grant round-trip passed.");
 } finally {
   await store.mutate((data) => {
     data.jobs = data.jobs.filter((entry) => entry.id !== rowId);
+    data.appStoreTransactions = data.appStoreTransactions.filter((entry) => entry.userId !== userId);
+    data.entitlements = data.entitlements.filter((entry) => entry.userId !== userId);
     data.creditLedger = data.creditLedger.filter((entry) => entry.userId !== userId);
     data.creditGrants = data.creditGrants.filter((entry) => entry.userId !== userId);
     data.creditAccounts = data.creditAccounts.filter((entry) => entry.userId !== userId);

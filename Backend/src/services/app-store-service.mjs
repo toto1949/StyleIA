@@ -516,12 +516,38 @@ async function persistVerifiedTransaction({
   gracePeriodExpiresAt = null,
   verifiedAt
 }) {
+  await store.mutate((data) => recordVerifiedTransactionInStore(data, {
+    transaction,
+    signedTransaction,
+    userId,
+    status,
+    gracePeriodExpiresAt,
+    verifiedAt
+  }));
+}
+
+// Apple verification is performed before this mutation. Recording the
+// transaction and its first due allowance together prevents a successful
+// purchase from showing an active tier with only starter credits until /me is
+// fetched later. Grant keys keep notification retries idempotent.
+export function recordVerifiedTransactionInStore(data, {
+  transaction,
+  signedTransaction,
+  userId,
+  status,
+  gracePeriodExpiresAt = null,
+  verifiedAt
+}) {
   const tier = productTiers.get(transaction.productId);
   if (!tier) {
     throw new HttpError(403, "The App Store product is not recognized.");
   }
 
-  await store.mutate(async (data) => {
+  const now = new Date(verifiedAt);
+  if (!Number.isFinite(now.getTime())) {
+    throw new Error("The App Store verification time is invalid.");
+  }
+  {
     data.appStoreTransactions = Array.isArray(data.appStoreTransactions) ? data.appStoreTransactions : [];
     data.entitlements = Array.isArray(data.entitlements) ? data.entitlements : [];
     const conflicting = data.appStoreTransactions.find((candidate) =>
@@ -546,8 +572,8 @@ async function persistVerifiedTransaction({
       revocationReason: transaction.revocationReason ?? null,
       isUpgraded: Boolean(transaction.isUpgraded),
       signedTransaction,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString()
     };
     const transactionIndex = data.appStoreTransactions.findIndex(
       (candidate) => candidate.transactionId === record.transactionId
@@ -570,7 +596,7 @@ async function persistVerifiedTransaction({
       gracePeriodExpiresAt,
       lastTransactionId: record.transactionId,
       lastVerifiedAt: verifiedAt,
-      updatedAt: new Date().toISOString()
+      updatedAt: now.toISOString()
     };
     const entitlementIndex = data.entitlements.findIndex((candidate) => candidate.userId === userId);
     const current = entitlementIndex >= 0 ? data.entitlements[entitlementIndex] : null;
@@ -581,7 +607,8 @@ async function persistVerifiedTransaction({
         data.entitlements.push(entitlement);
       }
     }
-  });
+    ensureDueCreditGrantsInStore(data, userId, now);
+  }
 }
 
 async function upsertNotification(notification) {

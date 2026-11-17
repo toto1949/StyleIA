@@ -10,13 +10,13 @@ Live App Store Connect configuration was updated and verified on 2026-11-15. Thi
 | Bundle ID | `com.sceneme.app` | Source/archive/portal PASS |
 | SKU | Stable existing Connect value | Portal PASS; keep private/internal |
 | Platform/version | iOS/iPadOS 1.0 | Source/portal PASS |
-| Build | 3 is the latest uploaded candidate | Build 3 was uploaded and tested for product loading on the owner's iPhone; App Store version 1.0 was last verified with build 2 selected. Recheck processing and select the exact signed-off build before review. Build 1 must not be submitted. |
+| Build | 3 is the latest uploaded candidate; a replacement is required | Build 3 loaded products, but a Sandbox purchase did not unlock the account in use and exposed a missing immediate credit grant. App Store version 1.0 was last verified with build 2 selected. Upload and test the fixed build before choosing it for review. |
 | China mainland availability | Excluded for version 1.0 at owner direction | App Store Connect shows 174 available regions and China mainland Not Available. The version page still displays China-specific security-assessment and AIGC notices; resolve whether these are informational before review. |
 | Apple team | `3K82B6HTAT`; matches every Xcode target | Archive and portal PASS |
 | Distribution certificate/profile | Apple Distribution / App Store managed profile | Archive/export PASS |
 | Numeric Apple app ID | `6822467260` / `APP_STORE_APPLE_ID` | Portal PASS |
-| App Store Server API issuer ID | `bcc9e67d-a7f4-444f-a1a2-9deefff625fd` / `APP_STORE_ISSUER_ID` | Owner-provided; API verification NOT TESTED |
-| App Store Server API key ID | `399AQ2HR33` / `APP_STORE_KEY_ID` | Owner-provided; matching `.p8` NOT PROVIDED |
+| App Store Server API issuer ID | `bcc9e67d-a7f4-444f-a1a2-9deefff625fd` / `APP_STORE_ISSUER_ID` | A Sandbox transaction was retrieved and verified in production; confirm the saved key metadata before submission. |
+| App Store Server API key ID | `399AQ2HR33` / `APP_STORE_KEY_ID` | Server verification succeeded with configured credentials; never place the private key in this repository. |
 
 Apple currently requires an app record before upload, and 2026 iOS uploads must be built with Xcode 26 or later. Record the exact Xcode version used. See [Apple upload guidance](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds).
 
@@ -35,18 +35,18 @@ Live setup now places Pro monthly/yearly at service level 1 and Creator monthly/
 
 Commercial approval record: `release/COMMERCIAL_LIMIT_DECISION.md`. Engineering preparation is approved; live product configuration is not.
 
-## Apple server configuration to provide later
+## Apple server configuration and verification
 
 Store only in Render/App Store Connect secret facilities:
 
-- Matching In-App Purchase `.p8` private key for issuer `bcc9e67d-a7f4-444f-a1a2-9deefff625fd` and key `399AQ2HR33`.
-- Sign in with Apple team ID, key ID and `.p8` private key.
+- Matching In-App Purchase `.p8` private key for issuer `bcc9e67d-a7f4-444f-a1a2-9deefff625fd` and key `399AQ2HR33` is configured in Render; a Sandbox transaction was verified. Recheck key rotation and least-privilege access before release.
+- Sign in with Apple team ID, key ID and `.p8` private key are configured in Render; the owner reported a successful real-device sign-in.
 - Numeric App Store Apple ID: `6822467260`.
 - Current Apple Root CA DER files from [Apple PKI](https://www.apple.com/certificateauthority/) mounted as secret files; set `APP_STORE_ROOT_CA_PATHS` to their absolute paths.
 - App Store Server Notifications V2 production URL: `https://styleia.onrender.com/v1/app-store/notifications` (saved in Connect).
 - Sandbox URL: `https://styleia.onrender.com/v1/app-store/notifications` (saved in Connect).
 
-After configuration, request an Apple test notification, verify HTTP 200 and durable notification status, then test duplicate delivery and notification history recovery. Never paste keys into issues, chat transcripts, docs, `.env`, source or CI logs.
+Sandbox renewal-preference notifications were received and persisted, but one older upgrade notification failed processing. Request an Apple test notification, verify HTTP 200 and durable status, then test duplicate delivery and notification history recovery. Never paste keys into issues, chat transcripts, docs, `.env`, source or CI logs.
 
 ## App Privacy worksheet
 

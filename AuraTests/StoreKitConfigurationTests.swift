@@ -79,11 +79,13 @@ struct StoreKitConfigurationTests {
         #expect(service.entitledTier == .free)
 
         try await session.setSimulatedError(.generic(.userCancelled), forAPI: .purchase)
-        try await service.purchase(.creatorMonthly)
+        let cancelled = try await service.purchase(.creatorMonthly)
+        #expect(!cancelled)
         #expect(!service.isPurchasing)
         #expect(service.entitledTier == .free)
         try await session.setSimulatedError(nil, forAPI: .purchase)
-        try await service.purchase(.creatorMonthly)
+        let completed = try await service.purchase(.creatorMonthly)
+        #expect(completed)
         #expect(service.entitledTier == .creator)
         #expect(!service.isPurchasing)
     }

@@ -168,7 +168,7 @@ struct AuraTests {
         #expect(!url.lowercased().contains("token"))
     }
 
-    @Test @MainActor func serverReviewGrantIsAccountScopedAndExpiring() throws {
+    @Test @MainActor func serverSubscriptionAccessIsAccountScopedAndExpiring() throws {
         let subscriptions = SubscriptionService.shared
         let reviewerID = "851d1d7e-9e9c-4352-a23f-389a74c21c67"
         let anotherID = "5d8c373e-4f21-4bc7-bf34-dac0512eaa60"
@@ -183,7 +183,7 @@ struct AuraTests {
         )
 
         subscriptions.bindAccount(userId: reviewerID)
-        subscriptions.applyReviewAccess(active.subscription, for: reviewerID)
+        subscriptions.applyAccountAccess(active.subscription, for: reviewerID)
         #expect(subscriptions.tier == .pro)
         #expect(subscriptions.tier.canAnimateToVideo)
         #expect(subscriptions.tier.canAddCompanion)
@@ -192,7 +192,7 @@ struct AuraTests {
 
         // A response belonging to the old account cannot grant the next user.
         subscriptions.bindAccount(userId: anotherID)
-        subscriptions.applyReviewAccess(active.subscription, for: reviewerID)
+        subscriptions.applyAccountAccess(active.subscription, for: reviewerID)
         #expect(subscriptions.complimentaryReviewTier == .free)
 
         let ordinaryJSON = """
@@ -203,8 +203,40 @@ struct AuraTests {
             APIService.AccountStatus.self,
             from: Data(ordinaryJSON.utf8)
         )
-        subscriptions.applyReviewAccess(ordinary.subscription, for: anotherID)
+        subscriptions.applyAccountAccess(ordinary.subscription, for: anotherID)
         #expect(subscriptions.complimentaryReviewTier == .free)
+        #expect(subscriptions.serverEntitledTier == .pro)
+        #expect(subscriptions.tier == .pro)
+
+        // A paid entitlement from the previous account cannot leak into a new login.
+        subscriptions.bindAccount(userId: reviewerID)
+        subscriptions.applyAccountAccess(ordinary.subscription, for: anotherID)
+        #expect(subscriptions.serverEntitledTier == .free)
+        subscriptions.bindAccount(userId: anotherID)
+
+        let revokedJSON = """
+        {"subscription":{"tier":"free","status":"revoked","environment":"Sandbox",
+        "isReviewAccess":false,"expiresAt":"2035-12-15T23:59:59.000Z"}}
+        """
+        let revoked = try JSONDecoder().decode(
+            APIService.AccountStatus.self,
+            from: Data(revokedJSON.utf8)
+        )
+        subscriptions.applyAccountAccess(revoked.subscription, for: anotherID)
+        #expect(subscriptions.serverEntitledTier == .free)
+
+        let graceJSON = """
+        {"subscription":{"tier":"creator","status":"grace_period","environment":"Sandbox",
+        "isReviewAccess":false,"expiresAt":"2025-01-01T00:00:00.000Z",
+        "gracePeriodExpiresAt":"2035-12-15T23:59:59.000Z"}}
+        """
+        let grace = try JSONDecoder().decode(
+            APIService.AccountStatus.self,
+            from: Data(graceJSON.utf8)
+        )
+        subscriptions.applyAccountAccess(grace.subscription, for: anotherID)
+        #expect(subscriptions.serverEntitledTier == .creator)
+        #expect(subscriptions.tier == .creator)
 
         let expiredJSON = """
         {"subscription":{"tier":"pro","status":"active","environment":"complimentary_review",
@@ -214,10 +246,10 @@ struct AuraTests {
             APIService.AccountStatus.self,
             from: Data(expiredJSON.utf8)
         )
-        subscriptions.applyReviewAccess(expired.subscription, for: anotherID)
+        subscriptions.applyAccountAccess(expired.subscription, for: anotherID)
         #expect(subscriptions.complimentaryReviewTier == .free)
 
-        subscriptions.applyReviewAccess(active.subscription, for: anotherID)
+        subscriptions.applyAccountAccess(active.subscription, for: anotherID)
         #expect(subscriptions.complimentaryReviewTier == .pro)
         subscriptions.bindAccount(userId: nil)
         #expect(subscriptions.complimentaryReviewTier == .free)

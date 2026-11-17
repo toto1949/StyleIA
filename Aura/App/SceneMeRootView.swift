@@ -51,9 +51,13 @@ struct SceneMeRootView: View {
             viewModel.subscriptionService.start()
         }
         .sheet(item: $viewModel.paywallTrigger) { trigger in
-            PaywallView(trigger: trigger) {
-                viewModel.paywallTrigger = nil
-            }
+            PaywallView(
+                trigger: trigger,
+                onDismiss: { viewModel.paywallTrigger = nil },
+                verifyPurchase: { requiredTier in
+                    try await viewModel.verifyCurrentPurchase(requiredTier: requiredTier)
+                }
+            )
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
         }
@@ -636,6 +640,18 @@ private struct ProfileView: View {
                 Image(systemName: tier == .free ? "crown" : "checkmark.seal.fill")
                     .font(.system(size: 20, weight: .regular))
                     .foregroundStyle(SceneMeTheme.gold)
+            }
+
+            if viewModel.subscriptionService.hasAccountMismatchPurchase {
+                Text("An App Store subscription is linked to another SceneMe login. Sign in with the account used to purchase it, or contact support.")
+                    .font(.footnote)
+                    .foregroundStyle(SceneMeTheme.subtleText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let error = viewModel.subscriptionService.purchaseVerificationError {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.42))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if tier == .free {
