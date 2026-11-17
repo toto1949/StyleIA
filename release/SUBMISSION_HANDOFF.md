@@ -1,0 +1,44 @@
+# SceneMe 1.0 submission handoff
+
+Status: **BLOCKED**. Do not press **Submit for Review** until the evidence below is complete. This is an engineering status report, not a claim that App Review will approve the app.
+
+## Completed by engineering
+
+- Production Sign in with Apple credential mismatch fixed. Apple accepted the replacement client secret, Render deployment `dep-dbtt0ch42hec73au3t5g` is live, health returned HTTP 200, and the owner reported a successful iPhone sign-in. Repeat sign-in, Hide My Email and deletion/revocation remain untested.
+- The four subscription products loaded on the owner's iPhone and prices appeared on the paywall. No purchase or restore lifecycle passed.
+- Local backend suite passed after the Apple diagnostic test was added. The diagnostic safely records only allowlisted OAuth error codes. PR #19 contains the current release branch; backend CI passed at head `c0936a6`, while iOS CI was still running when checked.
+- Paid Apps Agreement, bank account and U.S. W-9 were previously verified Active. The latest Connect state must be rechecked before submission.
+- Build 3 was uploaded. App Store version 1.0 was last verified with build 2 selected; choosing build 3 is still outstanding.
+- Live App Store Connect recheck: build 3 is listed in TestFlight as **Ready to Submit** for external beta review; build 2 is **Waiting for Review** there. The App Store version still has build 2 selected. These TestFlight statuses are not proof that build 3 passed public App Review.
+- App Store version 1.0 has empty review username/password, contact and notes fields. The release option is set to **Manually release this version**.
+- The owner chose to exclude China mainland for 1.0. App Store Connect now shows **174 available regions** and **China mainland: Not Available**. The version page still displays its security-assessment and AIGC notices after the change; verify they are nonblocking before submission. The other regions remained selected.
+- Reviewer account cleanup: the owner used in-app deletion and recreated `appreview@sceneme.app`; immediately after recreation, production SQL showed zero uploads/jobs. The old user, its 12 uploads, 17 jobs and result rows are absent. Render review access was rebound to the new user ID, with the existing expiry `2026-12-15T23:59:59Z`; deployment `dep-dbtt4aoae00c73dlk1l0` is live. Production showed a 123-credit starter/reviewer balance before testing, and the owner confirmed temporary Pro access on iPhone. The owner then generated an image and saw it in History. Production SQL confirms one completed image job with a private image object key, two charged credits and $0.08 actual cost; this was a premium image despite the requested standard-image check. The new account now holds test media. Direct object-bucket enumeration remains open. The current Postgres snapshot stores image output in the job payload; `generation_results` has no row and `completed_at` is null, so result-table completeness and completion timestamps need follow-up.
+- A separate talking-video job completed on that account after the backend recovered from a PostgreSQL connection timeout. Production recorded a private video object key, 23 charged credits and $1.35 actual cost; Render logged lip-sync completion. The owner played and exported it on iPhone. A failed-job refund remains unverified. Repeated fal queue progress events caused overlapping database writes; a one-write-per-phase fix and regression test pass locally but are not yet deployed.
+
+## Engineering work still open
+
+1. Verify the recreated App Review account's login on the exact build and temporary expiry. Pro display and one real image generation/History flow passed by owner observation and production job evidence. The old database history is gone; private object deletion followed the authenticated account-deletion route but has not been independently enumerated in the bucket. Decide whether to leave the new test image for review or remove it using a supported authenticated path.
+2. Finish PR #19 CI, review the final diff, merge only validated release changes, and deploy the exact backend commit. Current Render deploy uses main commit `852d6854bc1111cc5d958c6398717c86c1a53a5e` plus the corrected Apple key; PR #19 code is not deployed.
+3. Validate the owner-reported face change across quality settings using paired input/output photos and real provider job IDs. No provider result should be called identity-safe from source inspection alone.
+4. Execute signed StoreKit/Sandbox/TestFlight purchase, restore, upgrade, downgrade, expiry, refund, grace-period and notification scenarios. Product loading alone is insufficient. Do not activate or submit live subscription products before the owner's financial/TestFlight approval.
+5. Verify real provider cost, failed-generation credit refunds, account deletion, private-media isolation, offline/background recovery, accessibility, performance and cold-start behavior on the selected build. Review backup, alerting and provider safety gates.
+6. Recheck App Store Connect fields, review notes, age rating, rights, DSA answers, privacy label, URLs, screenshots and the selected build. Apple currently asks for a demo account with an expired subscription for auto-renewable subscription review; provide a usable path and explain any finite complimentary review access in review notes.
+
+## Draft App Review notes for owner approval
+
+> SceneMe creates private AI images and short videos from photos supplied by the user. Sign in with Apple and email sign-in are available. Use the review account credentials entered in the Sign-In Information fields to explore the template catalog, photo upload, custom scenes, companion flow, generation, Video Director, private history, export and in-app deletion. The review account receives a finite, temporary server-side feature allowance for evaluation; it is not an App Store purchase. Paid Creator and Pro plans are available through StoreKit in the paywall. To exercise a purchase from an expired state, use the separate expired-subscription demo account documented in the Sign-In Information/attachment [INSERT DETAILS AFTER VERIFIED]. Generation uses fal.ai and OpenAI; output varies by input and provider availability. Do not use real customer faces during review. For support, contact contact@zevyntalabs.com.
+
+Replace the bracketed text with a tested expired-account path before using these notes. Do not enter an expired demo claim unless the actual account exists and works. Credentials belong in App Store Connect's private review fields, not in this repository.
+
+## Owner actions
+
+1. The reviewer account's temporary Pro display and image generation are confirmed. Enter its password privately in App Store Connect only after the exact build is chosen. Do not paste the password into chat.
+2. Review a final TestFlight build with engineering and perform one real purchase/restore cycle using a Sandbox tester. Confirm product prices and tier limits before authorizing live subscription submission. Use an account without complimentary reviewer access for purchase tests.
+3. Provide the review contact phone and enter the working demo credentials directly in App Store Connect. Review the final legal/privacy wording, age-rating questionnaire, content rights and AI consent disclosures. Approve infrastructure spending if a paid production plan is required for reliable review access.
+4. After engineering reports all release gates PASS, choose the exact build and subscription items for the same draft submission, inspect the review notes and screenshots, and initiate **Submit for Review** yourself.
+
+## Source requirements
+
+- [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/) ask for on-device testing, a live backend and usable demo access.
+- [Apple's complete-review guidance](https://developer.apple.com/help/app-review/before-submitting-for-review/complete-review/) addresses subscription demo accounts, including expired subscriptions.
+- [Apple's subscription submission guidance](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-in-app-purchase) requires the app version, subscription group and products being reviewed together to be included in the same draft submission.

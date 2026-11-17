@@ -561,8 +561,8 @@ async function runFalRequest({
   paramMode = "full"
 }) {
   const isMulti = Boolean(companionImageURL);
-  const isEco = !isMulti && config.ecoMode;
   const isPremium = imageQuality === "premium";
+  const isEco = !isPremium && !isMulti && config.ecoMode;
   const model = isPremium
     ? (isMulti ? config.falPremiumMultiModel : config.falPremiumModel)
     : (isMulti ? config.falMultiModel : imageModel());
@@ -689,20 +689,29 @@ async function runQueuedFalRequest({
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.providerTimeoutMs);
-  const progressUpdates = [];
+  // fal can emit the same IN_PROGRESS status many times per second. A progress
+  // callback writes through the PostgreSQL snapshot bridge, so schedule it
+  // once per provider phase and handle rejection immediately. Otherwise a
+  // slow database can exhaust the connection pool and an unhandled rejection
+  // can terminate the worker before provider recovery runs.
+  let progressUpdate = null;
   try {
     await falClient.queue.subscribeToStatus(model, {
       requestId,
       logs: true,
       abortSignal: controller.signal,
       onQueueUpdate: (update) => {
-        if (update.status === "IN_PROGRESS") {
-          progressUpdates.push(Promise.resolve(onProgress?.(progressPercent)));
+        if (update.status === "IN_PROGRESS" && !progressUpdate) {
+          progressUpdate = Promise.resolve()
+            .then(() => onProgress?.(progressPercent))
+            .catch(() => {
+              logFal("progress_update_failed", { jobId, phase });
+            });
         }
         onQueueUpdate?.(update);
       }
     });
-    await Promise.allSettled(progressUpdates);
+    await progressUpdate;
   } catch (error) {
     if (controller.signal.aborted) {
       throw new FalRequestPendingError(

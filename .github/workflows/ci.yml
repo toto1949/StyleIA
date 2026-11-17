@@ -86,7 +86,7 @@ jobs:
         run: npm test
 
   ios-tests:
-    name: iOS unit tests
+    name: iOS unit and UI smoke tests
     # macos-15 ships Xcode 16+, required for objectVersion 77 projects.
     runs-on: macos-15
     steps:
@@ -131,7 +131,7 @@ jobs:
             -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Run AuraTests on simulator
+      - name: Run unit tests and critical UI smoke on simulator
         run: |
           set -euo pipefail
           # Prefer a simulator that exists on the image.
@@ -151,5 +151,9 @@ jobs:
             -scheme Aura \
             -destination "$DEST" \
             -only-testing:AuraTests \
+            -only-testing:AuraUITests/testAuthenticationModeAndValidation \
+            -only-testing:AuraUITests/testAuthenticationAtLargestAccessibilityTextSize \
+            -only-testing:AuraUITests/testAuthenticatedCatalogUsesNeutralSceneNamesAndExposesSupport \
+            -only-testing:AuraUITests/testFriendCompanionShowsRequiredPermissionAttestation \
             CODE_SIGNING_ALLOWED=NO
 

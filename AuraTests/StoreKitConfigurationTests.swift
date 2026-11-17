@@ -1,8 +1,93 @@
 import Foundation
 import Testing
+import StoreKit
+import StoreKitTest
 @testable import Aura
 
+@Suite(.serialized)
 struct StoreKitConfigurationTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SCENEME_RUN_STOREKIT_TESTS"] == "1")) @MainActor
+    func localProductsWithoutFailureSimulation() async throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("SceneMe.storekit")
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        defer { session.resetToDefaultState() }
+        try await session.setSimulatedError(nil, forAPI: .loadProducts)
+        let products = try await Product.products(for: SceneMeProductID.allCases.map(\.rawValue))
+        #expect(Set(products.map(\.id)) == Set(SceneMeProductID.allCases.map(\.rawValue)))
+    }
+
+    // Opt in on a host with a working StoreKit test service. A failed local
+    // purchase run is a release blocker, not proof of Sandbox compatibility.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SCENEME_RUN_STOREKIT_TESTS"] == "1")) @MainActor
+    func localPurchaseRenewalRefundAndExpiry() async throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("SceneMe.storekit")
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions(); session.resetToDefaultState() }
+
+        let service = SubscriptionService()
+        let account = UUID()
+        service.bindAccount(userId: account.uuidString)
+        try await session.setSimulatedError(.generic(.networkError(URLError(.notConnectedToInternet))), forAPI: .loadProducts)
+        await service.loadProducts()
+        #expect(service.products.isEmpty)
+        #expect(service.productLoadError != nil)
+        #expect(!service.isLoadingProducts)
+        try await session.setSimulatedError(nil, forAPI: .loadProducts)
+        await service.loadProducts()
+        #expect(service.products.count == 4)
+        #expect(service.productLoadError == nil)
+        #expect(!service.isLoadingProducts)
+        for id in SceneMeProductID.allCases {
+            #expect(service.formattedPrice(for: id) != nil)
+        }
+
+        let creator = "com.sceneme.creator.monthly"
+        let purchase = try await session.buyProduct(identifier: creator, options: [.appAccountToken(account)])
+        await service.refreshEntitlement()
+        #expect(service.entitledTier == .creator)
+        #expect(service.latestTransactionID == String(purchase.id))
+
+        // A different SceneMe account must not inherit this tagged purchase.
+        service.bindAccount(userId: UUID().uuidString)
+        await service.refreshEntitlement()
+        #expect(service.entitledTier == .free)
+
+        service.bindAccount(userId: account.uuidString)
+        await service.refreshEntitlement()
+        #expect(service.entitledTier == .creator)
+
+        try session.forceRenewalOfSubscription(productIdentifier: creator)
+        await service.refreshEntitlement()
+        #expect(service.entitledTier == .creator)
+        try session.expireSubscription(productIdentifier: creator)
+        await service.refreshEntitlement()
+        #expect(service.entitledTier == .free)
+
+        let pro = try await session.buyProduct(identifier: "com.sceneme.pro.yearly", options: [.appAccountToken(account)])
+        await service.refreshEntitlement()
+        #expect(service.entitledTier == .pro)
+        try session.refundTransaction(identifier: UInt(pro.id))
+        await service.refreshEntitlement()
+        #expect(service.entitledTier == .free)
+
+        try await session.setSimulatedError(.generic(.userCancelled), forAPI: .purchase)
+        try await service.purchase(.creatorMonthly)
+        #expect(!service.isPurchasing)
+        #expect(service.entitledTier == .free)
+        try await session.setSimulatedError(nil, forAPI: .purchase)
+        try await service.purchase(.creatorMonthly)
+        #expect(service.entitledTier == .creator)
+        #expect(!service.isPurchasing)
+    }
+
     @Test
     func localConfigurationMatchesProductContract() throws {
         let configurationURL = URL(fileURLWithPath: #filePath)
