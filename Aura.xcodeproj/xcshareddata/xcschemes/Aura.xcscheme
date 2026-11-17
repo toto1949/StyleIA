@@ -101,7 +101,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../SceneMe.storekit">
+         identifier = "../../../SceneMe.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
