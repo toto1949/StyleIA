@@ -6,6 +6,7 @@ struct PaywallView: View {
     /// Which feature the user was trying to use when the paywall appeared.
     let trigger: PaywallTrigger
     let onDismiss: () -> Void
+    let verifyPurchase: (SubscriptionTier) async throws -> Void
 
     @ObservedObject private var service = SubscriptionService.shared
     @State private var billing: BillingCycle = .yearly
@@ -23,9 +24,14 @@ struct PaywallView: View {
         var id: String { rawValue }
     }
 
-    init(trigger: PaywallTrigger, onDismiss: @escaping () -> Void) {
+    init(
+        trigger: PaywallTrigger,
+        onDismiss: @escaping () -> Void,
+        verifyPurchase: @escaping (SubscriptionTier) async throws -> Void
+    ) {
         self.trigger = trigger
         self.onDismiss = onDismiss
+        self.verifyPurchase = verifyPurchase
         _selectedTier = State(initialValue: trigger.suggestedTier == .free ? .pro : trigger.suggestedTier)
     }
 
@@ -114,7 +120,7 @@ struct PaywallView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if let error = purchaseError {
+            if let error = purchaseError ?? service.purchaseVerificationError {
                 Text(error)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color(red: 0.95, green: 0.45, blue: 0.42))
@@ -649,8 +655,16 @@ struct PaywallView: View {
                 Task {
                     let message = await service.restorePurchases()
                     if service.tier > .free {
-                        withAnimation { onDismiss() }
-                        dismiss()
+                        do {
+                            try await verifyPurchase(.creator)
+                            withAnimation { onDismiss() }
+                            dismiss()
+                        } catch {
+                            withAnimation {
+                                purchaseError = (error as? LocalizedError)?.errorDescription
+                                    ?? "SceneMe could not verify this purchase. Please try Restore Purchases again."
+                            }
+                        }
                     } else {
                         withAnimation { purchaseError = message }
                     }
@@ -722,11 +736,14 @@ struct PaywallView: View {
         withAnimation { purchaseError = nil }
 
         do {
-            try await service.purchase(productID)
-            if service.tier >= productID.tier {
-                withAnimation { onDismiss() }
-                dismiss()
+            let completed = try await service.purchase(productID)
+            guard completed else {
+                isPurchasingID = nil
+                return
             }
+            try await verifyPurchase(productID.tier)
+            withAnimation { onDismiss() }
+            dismiss()
         } catch {
             withAnimation {
                 purchaseError = (error as? LocalizedError)?.errorDescription

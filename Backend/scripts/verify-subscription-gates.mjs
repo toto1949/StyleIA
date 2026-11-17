@@ -3,6 +3,7 @@ import {
   consumeCreditsInStore,
   creditStatusInStore,
   generationCreditCosts,
+  recordVerifiedTransactionInStore,
   refundCreditsInStore,
   requireTier
 } from "../src/services/app-store-service.mjs";
@@ -71,6 +72,32 @@ assertEqual(
   1203,
   "annual grants cap at twelve and do not expire"
 );
+
+const purchaseData = { appStoreTransactions: [], entitlements: [], creditAccounts: [], creditGrants: [], creditLedger: [] };
+const verifiedPurchase = {
+  transactionId: "9000000000000001",
+  originalTransactionId: "9000000000000001",
+  appAccountToken: "purchase-user",
+  productId: "com.sceneme.pro.yearly",
+  environment: "Sandbox",
+  purchaseDate: Date.parse("2026-01-31T12:00:00.000Z"),
+  expiresDate: Date.parse("2027-01-31T12:00:00.000Z")
+};
+const recordPurchase = (userId, verifiedAt) => recordVerifiedTransactionInStore(purchaseData, {
+  transaction: verifiedPurchase,
+  signedTransaction: "verified-jws-fixture",
+  userId,
+  status: "active",
+  verifiedAt
+});
+recordPurchase("purchase-user", "2026-01-31T12:01:00.000Z");
+assertEqual(purchaseData.entitlements[0].tier, "pro", "verified purchase entitlement");
+assertEqual(purchaseData.creditAccounts[0].balance, 103, "purchase immediately grants first allowance");
+assertEqual(purchaseData.creditGrants.filter((grant) => grant.sourceType === "subscription").length,
+  1, "one subscription allowance after purchase");
+recordPurchase("purchase-user", "2026-01-31T12:02:00.000Z");
+assertEqual(purchaseData.creditAccounts[0].balance, 103, "replayed purchase does not duplicate allowance");
+expectHttpError(() => recordPurchase("different-user", "2026-01-31T12:03:00.000Z"), 409);
 
 const before = creditStatusInStore(data, "annual-user").balance;
 consumeCreditsInStore(data, "annual-user", {

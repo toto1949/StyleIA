@@ -86,8 +86,10 @@ struct APIService {
             let tier: String
             let status: String
             let expiresAt: String?
+            let gracePeriodExpiresAt: String?
             let environment: String?
             let isReviewAccess: Bool?
+            let productId: String?
         }
 
         let subscription: Subscription
@@ -105,13 +107,7 @@ struct APIService {
     }
 
     struct AccountState: Decodable {
-        struct Subscription: Decodable {
-            let tier: String
-            let status: String
-            let expiresAt: String?
-            let gracePeriodExpiresAt: String?
-            let productId: String?
-        }
+        typealias Subscription = AccountStatus.Subscription
 
         struct Usage: Decodable {
             let month: String

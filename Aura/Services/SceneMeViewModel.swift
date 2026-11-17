@@ -463,7 +463,7 @@ final class SceneMeViewModel: ObservableObject {
             let accessToken = try await token(using: api)
             let account = try await api.fetchAccountStatus(token: accessToken)
             guard session?.userId == signedIn.userId else { return }
-            subscriptionService.applyReviewAccess(account.subscription, for: signedIn.userId)
+            subscriptionService.applyAccountAccess(account.subscription, for: signedIn.userId)
             #if DEBUG
             print("[SceneMe][account-access] backend tier=\(account.subscription.tier), review=\(account.subscription.isReviewAccess == true), effective tier=\(subscriptionService.tier.displayName)")
             #endif
@@ -504,6 +504,7 @@ final class SceneMeViewModel: ObservableObject {
             let token = try await token(using: api)
             let state = try await api.fetchAccountState(token: token)
             guard session?.userId == userId else { return }
+            subscriptionService.applyAccountAccess(state.subscription, for: userId)
             serverCreditBalance = state.credits.balance
         } catch {
             // Offline state remains a display hint only; the server still
@@ -511,20 +512,57 @@ final class SceneMeViewModel: ObservableObject {
         }
     }
 
-    private func syncSubscriptionWithServer(transactionID: String?) async {
-        guard let api, let userId = session?.userId else { return }
-
-        do {
-            let token = try await token(using: api)
-            if let transactionID {
-                _ = try await api.syncSubscription(transactionID: transactionID, token: token)
-            }
-            guard session?.userId == userId else { return }
-            await syncAccountStateFromServer()
-        } catch {
-            // StoreKit remains the local display source while offline. The
-            // backend fails closed on paid features until verification works.
+    /// Paywall purchases and restores wait for server verification and the
+    /// account's credit balance before reporting success to the user.
+    func verifyCurrentPurchase(requiredTier: SubscriptionTier) async throws {
+        guard let transactionID = subscriptionService.latestTransactionID else {
+            throw SubscriptionError.verificationFailed
         }
+        try await verifyTransactionWithServer(transactionID, requiredTier: requiredTier)
+    }
+
+    private func syncSubscriptionWithServer(transactionID: String?) async {
+        guard let userId = session?.userId else { return }
+        guard let transactionID else {
+            await syncAccountStateFromServer()
+            return
+        }
+        do {
+            try await verifyTransactionWithServer(transactionID, requiredTier: .creator)
+        } catch {
+            guard session?.userId == userId else { return }
+            subscriptionService.setPurchaseVerificationError(
+                (error as? LocalizedError)?.errorDescription
+                    ?? "SceneMe could not verify this purchase. Use Restore Purchases or contact support."
+            )
+        }
+    }
+
+    private func verifyTransactionWithServer(
+        _ transactionID: String,
+        requiredTier: SubscriptionTier
+    ) async throws {
+        guard let api, let userId = session?.userId else {
+            throw SceneMeAPIError.unauthorized
+        }
+        let accessToken = try await token(using: api)
+        let verified = try await api.syncSubscription(transactionID: transactionID, token: accessToken)
+        guard session?.userId == userId else { throw SceneMeAPIError.unauthorized }
+        subscriptionService.applyAccountAccess(verified, for: userId)
+
+        let state = try await api.fetchAccountState(token: accessToken)
+        guard session?.userId == userId else { throw SceneMeAPIError.unauthorized }
+        subscriptionService.applyAccountAccess(state.subscription, for: userId)
+        serverCreditBalance = state.credits.balance
+
+        let serverTier: SubscriptionTier
+        switch state.subscription.tier {
+        case "pro": serverTier = .pro
+        case "creator": serverTier = .creator
+        default: serverTier = .free
+        }
+        guard serverTier >= requiredTier else { throw SubscriptionError.verificationFailed }
+        subscriptionService.setPurchaseVerificationError(nil)
     }
 
     private static func mergeHistory(local: [GenerationResult], remote: [GenerationResult]) -> [GenerationResult] {

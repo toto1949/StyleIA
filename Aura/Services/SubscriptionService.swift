@@ -15,6 +15,10 @@ final class SubscriptionService: ObservableObject {
     /// SceneMe account; never stored as a StoreKit transaction or persisted.
     @Published private(set) var complimentaryReviewTier: SubscriptionTier = .free
     private var complimentaryReviewExpiresAt: Date?
+    @Published private(set) var serverEntitledTier: SubscriptionTier = .free
+    private var serverEntitlementExpiresAt: Date?
+    @Published private(set) var hasAccountMismatchPurchase = false
+    @Published private(set) var purchaseVerificationError: String?
     @Published private(set) var products: [Product] = []
     @Published private(set) var isLoadingProducts = false
     @Published private(set) var productLoadError: String?
@@ -46,7 +50,9 @@ final class SubscriptionService: ObservableObject {
             return .pro
         }
         #endif
-        return entitledTier
+        let serverTier = (serverEntitlementExpiresAt ?? .distantPast) > Date()
+            ? serverEntitledTier : .free
+        return max(entitledTier, serverTier)
     }
 
     private var transactionListenerTask: Task<Void, Never>?
@@ -62,32 +68,65 @@ final class SubscriptionService: ObservableObject {
         // Clear access whenever the signed-in account changes.
         complimentaryReviewExpiresAt = nil
         complimentaryReviewTier = .free
+        serverEntitlementExpiresAt = nil
+        serverEntitledTier = .free
+        hasAccountMismatchPurchase = false
+        purchaseVerificationError = nil
         boundAccountToken = userId.flatMap(UUID.init(uuidString:))
         entitledTier = .free
         latestTransactionID = nil
         Task { await refreshEntitlement() }
     }
 
-    /// Trust only a valid, unexpired server grant for this specific user ID.
-    func applyReviewAccess(_ subscription: APIService.AccountStatus.Subscription, for userId: String) {
+    /// Apply only this account's unexpired, server-verified paid or review access.
+    func applyAccountAccess(_ subscription: APIService.AccountStatus.Subscription, for userId: String) {
         guard let id = UUID(uuidString: userId), id == boundAccountToken else { return }
 
-        var expiry: Date?
+        let expiry = Self.parseExpiry(subscription.expiresAt)
         if subscription.isReviewAccess == true,
            subscription.environment == "complimentary_review",
            subscription.status == "active",
-           subscription.tier == "pro",
-           let raw = subscription.expiresAt {
-            let parser = ISO8601DateFormatter()
-            parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            expiry = parser.date(from: raw)
-            if expiry == nil {
-                parser.formatOptions = [.withInternetDateTime]
-                expiry = parser.date(from: raw)
-            }
+           subscription.tier == "pro" {
+            complimentaryReviewExpiresAt = expiry
+            complimentaryReviewTier = (expiry ?? .distantPast) > Date() ? .pro : .free
+        } else {
+            complimentaryReviewExpiresAt = nil
+            complimentaryReviewTier = .free
         }
-        complimentaryReviewExpiresAt = expiry
-        complimentaryReviewTier = (expiry ?? .distantPast) > Date() ? .pro : .free
+
+        let paidEnvironment = ["Sandbox", "Production", "Xcode"].contains(subscription.environment ?? "")
+        let paidExpiry = subscription.status == "grace_period"
+            ? Self.parseExpiry(subscription.gracePeriodExpiresAt ?? subscription.expiresAt)
+            : expiry
+        if paidEnvironment,
+           ["active", "grace_period"].contains(subscription.status),
+           (paidExpiry ?? .distantPast) > Date() {
+            switch subscription.tier {
+            case "creator": serverEntitledTier = .creator
+            case "pro": serverEntitledTier = .pro
+            default: serverEntitledTier = .free
+            }
+            serverEntitlementExpiresAt = paidExpiry
+            if serverEntitledTier > .free {
+                hasAccountMismatchPurchase = false
+            }
+        } else {
+            serverEntitledTier = .free
+            serverEntitlementExpiresAt = nil
+        }
+    }
+
+    private static func parseExpiry(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let expiry = parser.date(from: raw) { return expiry }
+        parser.formatOptions = [.withInternetDateTime]
+        return parser.date(from: raw)
+    }
+
+    func setPurchaseVerificationError(_ message: String?) {
+        purchaseVerificationError = message
     }
 
     deinit {
@@ -139,12 +178,14 @@ final class SubscriptionService: ObservableObject {
 
     // MARK: - Purchase
 
-    func purchase(_ productID: SceneMeProductID) async throws {
+    @discardableResult
+    func purchase(_ productID: SceneMeProductID) async throws -> Bool {
         guard let product = product(for: productID) else {
             throw SubscriptionError.productNotFound
         }
 
         isPurchasing = true
+        purchaseVerificationError = nil
         defer { isPurchasing = false }
 
         var options: Set<Product.PurchaseOption> = []
@@ -158,14 +199,22 @@ final class SubscriptionService: ObservableObject {
         case .success(let verification):
             let transaction = try checkVerified(verification)
             await transaction.finish()
+            guard belongsToBoundAccount(transaction) else {
+                throw SubscriptionError.accountMismatch
+            }
             await refreshEntitlement()
+            // StoreKit may publish currentEntitlements after purchase() returns.
+            // Keep the verified transaction proof for immediate server sync.
+            entitledTier = max(entitledTier, productID.tier)
+            latestTransactionID = String(transaction.id)
+            return true
         case .pending:
             // Family sharing / Ask to Buy — entitlement arrives via listener.
             throw SubscriptionError.pendingApproval
         case .userCancelled:
-            break
+            return false
         @unknown default:
-            break
+            return false
         }
     }
 
@@ -186,39 +235,46 @@ final class SubscriptionService: ObservableObject {
         await refreshEntitlement()
         return tier > .free
             ? "Your \(tier.displayName) subscription was restored."
-            : "No active SceneMe subscription was found for this Apple ID."
+            : hasAccountMismatchPurchase
+                ? "This subscription belongs to another SceneMe account. Sign in with the SceneMe account used to purchase it."
+                : "No active SceneMe subscription was found for this Apple ID."
     }
 
     // MARK: - Entitlement
 
     /// Highest active tier for the bound SceneMe account.
     func refreshEntitlement() async {
+        let accountAtStart = boundAccountToken
         var highest: SubscriptionTier = .free
         var highestTransactionID: String?
+        var accountMismatch = false
 
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
             guard !transaction.isUpgraded else { continue }
-            guard belongsToBoundAccount(transaction) else { continue }
+            guard let id = SceneMeProductID(rawValue: transaction.productID) else { continue }
+            guard belongsToBoundAccount(transaction) else {
+                accountMismatch = true
+                continue
+            }
 
-            if let id = SceneMeProductID(rawValue: transaction.productID) {
-                if id.tier > highest {
-                    highest = id.tier
-                    highestTransactionID = String(transaction.id)
-                }
+            if id.tier > highest {
+                highest = id.tier
+                highestTransactionID = String(transaction.id)
             }
         }
 
+        guard boundAccountToken == accountAtStart else { return }
         entitledTier = highest
         latestTransactionID = highestTransactionID
+        hasAccountMismatchPurchase = accountMismatch && highest == .free && serverEntitledTier == .free
     }
 
-    /// Tagged purchases must match the signed-in SceneMe user.
-    /// Untagged (legacy) purchases still apply so existing subscribers are not locked out.
+    /// Paid transactions must be tagged to the signed-in SceneMe account.
+    /// The backend applies the same account-token requirement.
     private func belongsToBoundAccount(_ transaction: Transaction) -> Bool {
-        guard let boundAccountToken else { return true }
-        guard let token = transaction.appAccountToken else { return true }
-        return token == boundAccountToken
+        guard let boundAccountToken else { return false }
+        return transaction.appAccountToken == boundAccountToken
     }
 
     // MARK: - Transaction listener
@@ -329,6 +385,7 @@ enum SubscriptionError: LocalizedError {
     case productNotFound
     case verificationFailed
     case pendingApproval
+    case accountMismatch
 
     var errorDescription: String? {
         switch self {
@@ -338,6 +395,8 @@ enum SubscriptionError: LocalizedError {
             return "Purchase verification failed. Please contact support."
         case .pendingApproval:
             return "This purchase is pending approval. Access will unlock automatically after Apple completes it."
+        case .accountMismatch:
+            return "This subscription belongs to another SceneMe account. Sign in with the SceneMe account used to purchase it."
         }
     }
 }
