@@ -5,6 +5,13 @@ import { base64URLEncode } from "../encoding.mjs";
 const tokenEndpoint = "https://appleid.apple.com/auth/token";
 const revokeEndpoint = "https://appleid.apple.com/auth/revoke";
 
+// Only known OAuth codes may reach logs. Never include Apple's response body,
+// error_description, authorization codes, client secrets, or refresh tokens.
+function safeTokenError(payload) {
+  const allowed = ["invalid_request", "invalid_client", "invalid_grant", "unauthorized_client", "unsupported_grant_type", "invalid_scope"];
+  return allowed.includes(payload?.error) ? payload.error : "unrecognized_response";
+}
+
 function credentialsConfigured() {
   return Boolean(
     config.appleClientId
@@ -60,8 +67,8 @@ export async function exchangeAppleAuthorizationCode(authorizationCode) {
     signal: AbortSignal.timeout(10_000)
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.refresh_token) {
-    throw new Error(`Apple authorization-code exchange failed (${response.status}).`);
+  if (!response.ok || typeof payload?.refresh_token !== "string" || !payload.refresh_token) {
+    throw new Error(`Apple authorization-code exchange failed (${response.status}; ${safeTokenError(payload)}).`);
   }
   return encrypt(payload.refresh_token);
 }
