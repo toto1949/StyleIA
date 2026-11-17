@@ -11,6 +11,7 @@ Live App Store Connect configuration was updated and verified on 2026-11-15. Thi
 | SKU | Stable existing Connect value | Portal PASS; keep private/internal |
 | Platform/version | iOS/iPadOS 1.0 | Source/portal PASS |
 | Build | 3 is the latest uploaded candidate | Build 3 was uploaded and tested for product loading on the owner's iPhone; App Store version 1.0 was last verified with build 2 selected. Recheck processing and select the exact signed-off build before review. Build 1 must not be submitted. |
+| China mainland availability | Excluded for version 1.0 at owner direction | App Store Connect shows 174 available regions and China mainland Not Available. The version page still displays China-specific security-assessment and AIGC notices; resolve whether these are informational before review. |
 | Apple team | `3K82B6HTAT`; matches every Xcode target | Archive and portal PASS |
 | Distribution certificate/profile | Apple Distribution / App Store managed profile | Archive/export PASS |
 | Numeric Apple app ID | `6822467260` / `APP_STORE_APPLE_ID` | Portal PASS |
