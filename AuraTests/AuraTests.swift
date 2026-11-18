@@ -261,6 +261,25 @@ struct AuraTests {
         #expect(subscriptions.complimentaryReviewTier == .free)
     }
 
+    @Test @MainActor func galleryThumbnailsDoNotCrossAccounts() {
+        let cache = GenerationThumbnailCache.shared
+        cache.removeAll()
+        defer { cache.removeAll() }
+        let image = solidImage(size: CGSize(width: 40, height: 40))
+        cache.insert(image, ownerID: "first-account", resultID: "same-result")
+
+        #expect(cache.image(ownerID: "first-account", resultID: "same-result") != nil)
+        #expect(cache.image(ownerID: "second-account", resultID: "same-result") == nil)
+        cache.remove(ownerID: "first-account", resultID: "same-result")
+        #expect(cache.image(ownerID: "first-account", resultID: "same-result") == nil)
+    }
+
+    @Test @MainActor func unknownCreditBalanceDoesNotBlockGeneration() {
+        let viewModel = SceneMeViewModel(api: nil, analyzer: VisionStyleIAImageAnalyzer())
+        #expect(viewModel.generationsRemainingThisMonth == nil)
+        #expect(!viewModel.hasReachedGenerationLimit)
+    }
+
     private func solidImage(size: CGSize) -> UIImage {
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1

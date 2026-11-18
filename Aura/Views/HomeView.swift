@@ -1,5 +1,50 @@
+import ImageIO
 import PhotosUI
 import SwiftUI
+import UIKit
+
+/// In-memory, account-scoped thumbnails survive tab reconstruction and signed
+/// URL rotation without writing private generated media to an unprotected cache.
+@MainActor
+final class GenerationThumbnailCache {
+    static let shared = GenerationThumbnailCache()
+    private let images = NSCache<NSString, UIImage>()
+    private let network: URLSession
+
+    private init() {
+        images.totalCostLimit = 64 * 1024 * 1024
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 20
+        network = URLSession(configuration: configuration)
+    }
+
+    func image(ownerID: String, resultID: String) -> UIImage? {
+        images.object(forKey: key(ownerID: ownerID, resultID: resultID))
+    }
+
+    func insert(_ image: UIImage, ownerID: String, resultID: String) {
+        let cost = (image.cgImage?.bytesPerRow ?? 0) * (image.cgImage?.height ?? 0)
+        images.setObject(image, forKey: key(ownerID: ownerID, resultID: resultID), cost: cost)
+    }
+
+    func remove(ownerID: String, resultID: String) {
+        images.removeObject(forKey: key(ownerID: ownerID, resultID: resultID))
+    }
+
+    func removeAll() {
+        images.removeAllObjects()
+    }
+
+    func fetch(_ url: URL) async throws -> (Data, URLResponse) {
+        try await network.data(from: url)
+    }
+
+    private func key(ownerID: String, resultID: String) -> NSString {
+        "\(ownerID)|\(resultID)" as NSString
+    }
+}
 
 struct HomeView: View {
     @ObservedObject var viewModel: SceneMeViewModel
@@ -180,6 +225,7 @@ struct HomeView: View {
                     ForEach(Array(viewModel.history.prefix(4))) { result in
                         GenerationCard(
                             result: result,
+                            ownerID: viewModel.session?.userId,
                             isFavorite: viewModel.isFavorite(result),
                             onToggleFavorite: { viewModel.toggleFavorite(result) },
                             onDelete: { viewModel.deleteResult(result) }
@@ -217,12 +263,15 @@ struct HomeView: View {
 /// Long-press for delete and favorite actions.
 struct GenerationCard: View {
     let result: GenerationResult
+    let ownerID: String?
     var isFavorite = false
     var onToggleFavorite: (() -> Void)?
     var onDelete: (() -> Void)?
     let onTap: () -> Void
 
     @State private var confirmDelete = false
+    @State private var loadedThumbnail: UIImage?
+    @State private var thumbnailFailed = false
 
     private var cardShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: SceneMeTheme.cardRadius - 4, style: .continuous)
@@ -235,19 +284,22 @@ struct GenerationCard: View {
                 // hit-test region past the card bounds (steals taps from chips above).
                 Color.clear
                     .overlay {
-                        AsyncImage(url: result.imageURL) { phase in
-                            if case .success(let image) = phase {
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            } else {
-                                SceneMeTheme.surface
-                                    .overlay {
+                        if let thumbnail = loadedThumbnail ?? cachedThumbnail {
+                            Image(uiImage: thumbnail)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            SceneMeTheme.surface
+                                .overlay {
+                                    if thumbnailFailed {
                                         Image(systemName: "photo")
                                             .font(.system(size: 18))
                                             .foregroundStyle(SceneMeTheme.faintText)
+                                    } else {
+                                        ProgressView()
+                                            .tint(SceneMeTheme.faintText)
                                     }
-                            }
+                                }
                         }
                     }
                     .clipped()
@@ -298,6 +350,9 @@ struct GenerationCard: View {
             }
         }
         .buttonStyle(SceneMePressButtonStyle())
+        .task(id: result.imageURL) {
+            await loadThumbnail()
+        }
         .contextMenu {
             if let onToggleFavorite {
                 Button {
@@ -329,6 +384,42 @@ struct GenerationCard: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("\(result.sceneName) will be removed from your gallery. This can't be undone.")
+        }
+    }
+
+    private var cachedThumbnail: UIImage? {
+        guard let ownerID else { return nil }
+        return GenerationThumbnailCache.shared.image(ownerID: ownerID, resultID: result.id)
+    }
+
+    private func loadThumbnail() async {
+        guard let ownerID, !ownerID.isEmpty else { return }
+        if let cached = GenerationThumbnailCache.shared.image(ownerID: ownerID, resultID: result.id) {
+            loadedThumbnail = cached
+            thumbnailFailed = false
+            return
+        }
+        thumbnailFailed = false
+        do {
+            let (data, response) = try await GenerationThumbnailCache.shared.fetch(result.imageURL)
+            guard !Task.isCancelled else { return }
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 560
+                  ] as CFDictionary) else {
+                thumbnailFailed = true
+                return
+            }
+            let thumbnail = UIImage(cgImage: cgImage)
+            GenerationThumbnailCache.shared.insert(thumbnail, ownerID: ownerID, resultID: result.id)
+            loadedThumbnail = thumbnail
+            thumbnailFailed = false
+        } catch {
+            // History refresh can replace an expired signed URL on the next visit.
+            if !Task.isCancelled { thumbnailFailed = true }
         }
     }
 }
