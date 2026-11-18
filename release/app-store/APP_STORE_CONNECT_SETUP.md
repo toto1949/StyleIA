@@ -10,7 +10,7 @@ Live App Store Connect configuration was updated and verified on 2026-11-15. Thi
 | Bundle ID | `com.sceneme.app` | Source/archive/portal PASS |
 | SKU | Stable existing Connect value | Portal PASS; keep private/internal |
 | Platform/version | iOS/iPadOS 1.0 | Source/portal PASS |
-| Build | 3 is the latest uploaded candidate; a replacement is required | Build 3 loaded products, but a Sandbox purchase did not unlock the account in use and exposed a missing immediate credit grant. App Store version 1.0 was last verified with build 2 selected. Upload and test the fixed build before choosing it for review. |
+| Build | 4 uploaded at 2026-11-17 22:42 EST; Connect reports Ready to Submit | Build 3 loaded products, but its Sandbox purchase belonged to a different SceneMe login and exposed a missing immediate credit grant. Build 4 includes the fix and is assigned to two internal TestFlight groups. App Store version 1.0 was last verified with build 2 selected. Test build 4 on the owner's Sign in with Apple SceneMe account before choosing it for public review. |
 | China mainland availability | Excluded for version 1.0 at owner direction | App Store Connect shows 174 available regions and China mainland Not Available. The version page still displays China-specific security-assessment and AIGC notices; resolve whether these are informational before review. |
 | Apple team | `3K82B6HTAT`; matches every Xcode target | Archive and portal PASS |
 | Distribution certificate/profile | Apple Distribution / App Store managed profile | Archive/export PASS |
