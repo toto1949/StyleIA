@@ -31,7 +31,8 @@ final class SubscriptionService: ObservableObject {
     /// SceneMe account currently signed in — used to tag and filter purchases.
     private(set) var boundAccountToken: UUID?
 
-    /// The tier the rest of the app honors.
+    /// The tier the rest of the app honors. StoreKit transactions are purchase
+    /// proofs, but only the account-scoped backend entitlement unlocks features.
     var tier: SubscriptionTier {
         // Give a valid server grant priority over a cached Xcode Debug override.
         if complimentaryReviewTier == .pro,
@@ -52,7 +53,7 @@ final class SubscriptionService: ObservableObject {
         #endif
         let serverTier = (serverEntitlementExpiresAt ?? .distantPast) > Date()
             ? serverEntitledTier : .free
-        return max(entitledTier, serverTier)
+        return serverTier
     }
 
     private var transactionListenerTask: Task<Void, Never>?
@@ -128,6 +129,12 @@ final class SubscriptionService: ObservableObject {
     func setPurchaseVerificationError(_ message: String?) {
         purchaseVerificationError = message
     }
+
+    #if DEBUG
+    func setLocalEntitlementForTesting(_ tier: SubscriptionTier) {
+        entitledTier = tier
+    }
+    #endif
 
     deinit {
         transactionListenerTask?.cancel()
@@ -233,8 +240,8 @@ final class SubscriptionService: ObservableObject {
             return "Restore could not be completed. Check your App Store connection and try again."
         }
         await refreshEntitlement()
-        return tier > .free
-            ? "Your \(tier.displayName) subscription was restored."
+        return latestTransactionID != nil
+            ? "An App Store subscription was found. SceneMe is verifying it."
             : hasAccountMismatchPurchase
                 ? "This subscription belongs to another SceneMe account. Sign in with the SceneMe account used to purchase it."
                 : "No active SceneMe subscription was found for this Apple ID."
