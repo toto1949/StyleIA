@@ -194,6 +194,11 @@ struct AuraTests {
         subscriptions.bindAccount(userId: anotherID)
         subscriptions.applyAccountAccess(active.subscription, for: reviewerID)
         #expect(subscriptions.complimentaryReviewTier == .free)
+        // An Apple transaction alone cannot unlock a SceneMe account when
+        // backend verification rejects it or has not completed.
+        subscriptions.setLocalEntitlementForTesting(.pro)
+        #expect(subscriptions.entitledTier == .pro)
+        #expect(subscriptions.tier == .free)
 
         let ordinaryJSON = """
         {"subscription":{"tier":"pro","status":"active","environment":"Production",
@@ -224,6 +229,7 @@ struct AuraTests {
         )
         subscriptions.applyAccountAccess(revoked.subscription, for: anotherID)
         #expect(subscriptions.serverEntitledTier == .free)
+        #expect(subscriptions.tier == .free)
 
         let graceJSON = """
         {"subscription":{"tier":"creator","status":"grace_period","environment":"Sandbox",

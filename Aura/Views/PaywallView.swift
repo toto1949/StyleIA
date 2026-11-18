@@ -654,7 +654,7 @@ struct PaywallView: View {
             Button {
                 Task {
                     let message = await service.restorePurchases()
-                    if service.tier > .free {
+                    if service.latestTransactionID != nil {
                         do {
                             try await verifyPurchase(.creator)
                             withAnimation { onDismiss() }
