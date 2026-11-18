@@ -80,31 +80,20 @@ struct SceneMeRootView: View {
         }
         .task {
             await viewModel.refreshScenes()
-            await viewModel.refreshAccountAccess()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
-                Task { await viewModel.refreshAccountAccess() }
-            }
-        }
-        .task {
-            await viewModel.refreshAccountAccess()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                Task { await viewModel.refreshAccountAccess() }
-            }
-        }
-        // Keep signed media URLs fresh when the app becomes active and when
-        // returning to the Gallery. Existing scenePhase handlers are preserved.
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                Task { await viewModel.refreshHistoryFromServer() }
+                Task {
+                    await viewModel.syncAccountStateFromServer()
+                    await viewModel.refreshHistoryFromServer()
+                }
             }
         }
         .onChange(of: viewModel.tab) { _, selectedTab in
             if selectedTab == .gallery {
                 Task { await viewModel.refreshHistoryFromServer() }
+            } else if selectedTab == .profile {
+                Task { await viewModel.syncAccountStateFromServer() }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sceneMeOpenReadyClip)) { notification in
@@ -389,6 +378,7 @@ private struct GalleryView: View {
                             ForEach(results) { result in
                                 GenerationCard(
                                     result: result,
+                                    ownerID: viewModel.session?.userId,
                                     isFavorite: viewModel.isFavorite(result),
                                     onToggleFavorite: { viewModel.toggleFavorite(result) },
                                     onDelete: { viewModel.deleteResult(result) }
@@ -627,6 +617,10 @@ private struct ProfileView: View {
                             Text("\(left) credit\(left == 1 ? "" : "s") available")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(left == 0 ? Color(red: 0.95, green: 0.45, blue: 0.42) : SceneMeTheme.subtleText)
+                        } else {
+                            Text(viewModel.creditBalanceUnavailable ? "Credits unavailable" : "Loading credits…")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(SceneMeTheme.subtleText)
                         }
                     }
 
@@ -643,7 +637,7 @@ private struct ProfileView: View {
             }
 
             if viewModel.subscriptionService.hasAccountMismatchPurchase {
-                Text("An App Store subscription is linked to another SceneMe login. Sign in with the account used to purchase it, or contact support.")
+                Text("This Apple subscription belongs to another SceneMe login. Sign in with that account or contact support. Canceling and buying again may keep the same subscription link.")
                     .font(.footnote)
                     .foregroundStyle(SceneMeTheme.subtleText)
                     .frame(maxWidth: .infinity, alignment: .leading)
