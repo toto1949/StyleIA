@@ -8,12 +8,12 @@ import {
   requireTier
 } from "../src/services/app-store-service.mjs";
 
-function expectHttpError(action, statusCode) {
+function expectHttpError(action, statusCode, code = null) {
   try { action(); } catch (error) {
-    if (error.statusCode === statusCode) return error;
+    if (error.statusCode === statusCode && (!code || error.code === code)) return error;
     throw error;
   }
-  throw new Error(`Expected HTTP ${statusCode}.`);
+  throw new Error(`Expected HTTP ${statusCode}${code ? ` (${code})` : ""}.`);
 }
 
 function assertEqual(actual, expected, label) {
@@ -97,7 +97,11 @@ assertEqual(purchaseData.creditGrants.filter((grant) => grant.sourceType === "su
   1, "one subscription allowance after purchase");
 recordPurchase("purchase-user", "2026-01-31T12:02:00.000Z");
 assertEqual(purchaseData.creditAccounts[0].balance, 103, "replayed purchase does not duplicate allowance");
-expectHttpError(() => recordPurchase("different-user", "2026-01-31T12:03:00.000Z"), 409);
+expectHttpError(
+  () => recordPurchase("different-user", "2026-01-31T12:03:00.000Z"),
+  409,
+  "APP_STORE_SUBSCRIPTION_OWNERSHIP_CONFLICT"
+);
 
 const before = creditStatusInStore(data, "annual-user").balance;
 consumeCreditsInStore(data, "annual-user", {

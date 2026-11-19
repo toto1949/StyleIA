@@ -351,13 +351,9 @@ final class SubscriptionService: ObservableObject {
         let yearlyID: SceneMeProductID = tier == .pro ? .proYearly : .creatorYearly
         if
             let monthly = product(for: monthlyID)?.price,
-            let yearly = product(for: yearlyID)?.price,
-            monthly > 0
+            let yearly = product(for: yearlyID)?.price
         {
-            let annualIfMonthly = monthly * 12
-            guard annualIfMonthly > yearly else { return nil }
-            let saved = ((annualIfMonthly - yearly) / annualIfMonthly) * 100
-            return NSDecimalNumber(decimal: saved).intValue
+            return Self.yearlySavingsPercent(monthly: monthly, yearly: yearly)
         }
         #if DEBUG
         if isScreenshotMode {
@@ -365,6 +361,26 @@ final class SubscriptionService: ObservableObject {
         }
         #endif
         return nil
+    }
+
+    static func yearlySavingsPercent(monthly: Decimal, yearly: Decimal) -> Int? {
+        guard monthly > 0, yearly > 0 else { return nil }
+        let annualIfMonthly = monthly * 12
+        guard annualIfMonthly > yearly else { return nil }
+        let saved = ((annualIfMonthly - yearly) / annualIfMonthly) * 100
+        // Foundation can return 0 from intValue for a high-precision Decimal.
+        // Round to a whole percent before converting to Int.
+        let rounded = NSDecimalNumber(decimal: saved).rounding(
+            accordingToBehavior: NSDecimalNumberHandler(
+                roundingMode: .down,
+                scale: 0,
+                raiseOnExactness: false,
+                raiseOnOverflow: false,
+                raiseOnUnderflow: false,
+                raiseOnDivideByZero: false
+            )
+        ).intValue
+        return rounded > 0 ? rounded : nil
     }
 
     #if DEBUG

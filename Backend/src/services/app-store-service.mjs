@@ -556,7 +556,11 @@ export function recordVerifiedTransactionInStore(data, {
       && candidate.userId !== userId
     );
     if (conflicting) {
-      throw new HttpError(409, "This App Store subscription is linked to another SceneMe account.");
+      throw new HttpError(
+        409,
+        "This App Store subscription is linked to another SceneMe account.",
+        { code: "APP_STORE_SUBSCRIPTION_OWNERSHIP_CONFLICT" }
+      );
     }
 
     const record = {
