@@ -195,7 +195,27 @@ async function route(request, response) {
       clientAddress(request)
     );
     const body = await readJSON(request, 200_000);
-    const result = await processAppStoreNotification(body.signedPayload);
+    let result;
+    try {
+      result = await processAppStoreNotification(body.signedPayload);
+    } catch (error) {
+      // Retrying the same signed transaction cannot make it safe to attach to
+      // another account. The processor has already stored the failed event, so
+      // acknowledge this permanent conflict to stop Apple retrying it.
+      if (
+        error instanceof HttpError
+        && error.code === "APP_STORE_SUBSCRIPTION_OWNERSHIP_CONFLICT"
+      ) {
+        sendJSON(response, 200, {
+          success: true,
+          duplicate: false,
+          ignored: true,
+          reason: error.code
+        });
+        return;
+      }
+      throw error;
+    }
     sendJSON(response, 200, { success: true, duplicate: result.duplicate });
     return;
   }
