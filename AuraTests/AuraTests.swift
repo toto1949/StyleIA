@@ -66,6 +66,12 @@ struct AuraTests {
         #expect(GenerationCreditCost.talkingVideo == 23)
     }
 
+    @MainActor @Test func yearlySavingsUsesLoadedStoreKitPrices() {
+        #expect(SubscriptionService.yearlySavingsPercent(monthly: 14.99, yearly: 119.99) == 33)
+        #expect(SubscriptionService.yearlySavingsPercent(monthly: 6.99, yearly: 54.99) == 34)
+        #expect(SubscriptionService.yearlySavingsPercent(monthly: 10, yearly: 120) == nil)
+    }
+
     @Test func companionGenderSelectionIsPreserved() throws {
         let scene = try #require(SceneCatalog.bundled.first { $0.id == "times-square" })
         var request = GenerationRequest(scene: scene)
